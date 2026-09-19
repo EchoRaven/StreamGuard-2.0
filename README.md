@@ -19,6 +19,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [`sg2/validate.py`](sg2/validate.py) | Dataset-level invariants, including a permutation test for splice leakage |
 | [`sg2/synth/`](sg2/synth/) | Synthesis pipeline — splice planning that provably carries no label information |
 | [`sg2/audit.py`](sg2/audit.py) | Adversarial audit: attack the dataset with the features the sentinel will read |
+| [`sg2/train/fusion.py`](sg2/train/fusion.py) | Sentinel fusion head — multi-channel scores into one continuous CUSUM statistic |
 | [`docs/`](docs/) | Full implementation plan: model choice, data construction, training, runtime, experiments |
 
 ### Three ideas worth the click
@@ -53,11 +54,23 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [06_EXPERIMENTS](docs/06_EXPERIMENTS.md) | 实验协议，每个带否定条件 |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
+### 状态
+
+| 组件 | 状态 |
+|---|---|
+| 格式规范 + JSON Schema + 池守卫 loader | ✅ |
+| 数据集校验器（6 项，含置换检验） | ✅ |
+| 少样本适配 + conformal 校准 | ✅ 四机制 |
+| 合成流水线（规划/渲染/CLI） | ✅ 40 条端到端验证 |
+| 压缩域特征 + 对抗泄漏审计 | ✅ |
+| Sentinel 融合头 | ✅ numpy，无需 GPU |
+| 视觉通道（SigLIP 2）/ Agent / 中间层 LoRA | ⬜ |
+
 ### 快速开始
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 37 passed
+make test        # 53 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
