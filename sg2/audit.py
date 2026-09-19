@@ -14,8 +14,11 @@ validate.py 查的是**规划层**的统计性质(切点数/位置/时长同分�
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -67,8 +70,48 @@ def codec_summary(video_path: str, duration_s: float) -> list[float]:
             duration_s, len(f)]
 
 
+class _FeatureCache:
+    """按 (视频路径, mtime, 大小) 缓存压缩域摘要。
+
+    抽取实测 0.79s/条,40 条即 31s。审计会被反复运行(改了规划就要重跑),
+    没有缓存的话每次都白付这笔钱。
+    """
+
+    def __init__(self, cache_dir: str | None, video_dir: str):
+        self.path = Path(cache_dir or video_dir).parent / ".sg2_codec_cache.json"
+        try:
+            self.data = json.loads(self.path.read_text())
+        except Exception:
+            self.data = {}
+        self.dirty = False
+
+    @staticmethod
+    def _key(clip_id: str, video: str) -> str:
+        try:
+            st = Path(video).stat()
+            sig = f"{clip_id}:{st.st_mtime_ns}:{st.st_size}"
+        except OSError:
+            sig = clip_id
+        return hashlib.sha256(sig.encode()).hexdigest()[:24]
+
+    def get(self, clip_id: str, video: str, duration_s: float) -> list[float]:
+        k = self._key(clip_id, video)
+        if k not in self.data:
+            self.data[k] = codec_summary(video, duration_s)
+            self.dirty = True
+        return self.data[k]
+
+    def flush(self) -> None:
+        if self.dirty:
+            try:
+                self.path.write_text(json.dumps(self.data))
+            except OSError:
+                pass
+
+
 def audit_codec_leakage(manifest: str, video_dir: str, *, n_perm: int = 200,
-                        seed: int = 0, n_jobs: int = -1) -> AuditResult:
+                        seed: int = 0, n_jobs: int | None = None,
+                        cache_dir: str | None = None) -> AuditResult:
     """用压缩域摘要特征尝试预测 safe/unsafe。
 
     Returns:
@@ -81,10 +124,13 @@ def audit_codec_leakage(manifest: str, video_dir: str, *, n_perm: int = 200,
         raise RuntimeError("需要 scikit-learn:pip install scikit-learn") from e
 
     records: list[ClipRecord] = list(load(manifest, pool=ALL_POOLS))
+    cache = _FeatureCache(cache_dir, video_dir)
     X, y = [], []
     for r in records:
-        X.append(codec_summary(f"{video_dir}/{r.id}.mp4", r.media["duration_s"]))
+        X.append(cache.get(r.id, f"{video_dir}/{r.id}.mp4",
+                           r.media["duration_s"]))
         y.append(0 if r.is_safe else 1)
+    cache.flush()
     X, y = np.asarray(X), np.asarray(y)
 
     if len(set(y)) < 2:
@@ -93,6 +139,10 @@ def audit_codec_leakage(manifest: str, video_dir: str, *, n_perm: int = 200,
     n_splits = min(5, int(np.bincount(y).min()))
     if n_splits < 2:
         raise ValueError("某一类样本太少,无法交叉验证")
+    # 小数据上 n_jobs=-1 反而更慢:每次拟合只有几十棵浅树,派发开销高于计算。
+    # 实测 n=40 时 n_jobs=-1 为 996ms/次,n_jobs=1 为 359ms/次,慢 2.8 倍。
+    if n_jobs is None:
+        n_jobs = 1 if len(y) < 500 else -1
     cv = StratifiedKFold(n_splits, shuffle=True, random_state=seed)
     clf = RandomForestClassifier(n_estimators=300, random_state=seed,
                                  n_jobs=n_jobs)
