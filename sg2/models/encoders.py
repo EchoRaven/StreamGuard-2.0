@@ -110,6 +110,12 @@ class SigLIP2Encoder:
             inputs = {k: v.to(self.cfg.device) for k, v in inputs.items()}
             with torch.no_grad():
                 feat = self._model.get_image_features(**inputs)
+            # transformers 5.x 可能返回输出对象而非张量
+            if not isinstance(feat, torch.Tensor):
+                feat = getattr(feat, "pooler_output", None)
+                if feat is None:
+                    raise RuntimeError(
+                        "get_image_features 未返回张量,也没有 pooler_output")
             outs.append(feat.float().cpu().numpy())
         return _l2(np.concatenate(outs, axis=0))
 

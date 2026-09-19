@@ -134,9 +134,22 @@ def test_sentinel_satisfies_protocol():
 
 
 def test_degenerate_embedding_is_detected():
-    """直方图编码器区分不了同一镜头内的帧 —— 必须报错而非静默丢 90% 帧。"""
-    with pytest.raises(DegenerateEmbedding, match="展布"):
-        _sent("hist").calibrate_dedup(_shots())
+    """帧完全相同时无论什么阈值都达不到目标解码率 —— 必须报错。
+
+    判据是**目标达成率**而非分布展布。回归:初版用 10-90 分位展布,
+    在真实视频上误杀 —— 真实序列绝大多数相邻帧在镜头内(sim≈0.99),
+    少数在镜头边界(sim≈0.79),偏斜是正常形状不是退化。实测 SigLIP2
+    在真实帧上 sims∈[0.791,0.997] 判别力充足却被展布判据拒绝。
+    """
+    same = np.stack([np.full((16, 16, 3), 0.5, np.float32)] * 30)
+    with pytest.raises(DegenerateEmbedding, match="目标解码比例"):
+        _sent().calibrate_dedup(same)
+
+
+def test_skewed_but_usable_distribution_is_accepted():
+    """偏斜分布(镜头内密集 + 少数边界)必须被接受。"""
+    d = _sent().calibrate_dedup(_shots(), keep_frac=0.3)
+    assert 0.0 < d < 1.0
 
 
 def test_dedup_calibration_is_monotone_in_keep_frac():

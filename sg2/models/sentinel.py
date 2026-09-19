@@ -58,7 +58,7 @@ class MultiChannelSentinel:
 
     def calibrate_dedup(self, frames: np.ndarray, *,
                         keep_frac: float = 0.3,
-                        min_spread: float = 0.05) -> float:
+                        tol: float = 0.12) -> float:
         """从数据标定去重阈值,并就地生效。
 
         ⚠️ 去重阈值**依赖编码器**。同一个 0.02 在不同嵌入空间里含义完全不同
@@ -78,18 +78,25 @@ class MultiChannelSentinel:
         emb = self.encoder.encode(frames)
         sims = np.sum(emb[1:] * emb[:-1], axis=1)
 
-        # 退化检测:相似度分布几乎没有展布时,任何阈值都会把帧全留或全去。
-        # 这种失败很隐蔽 —— 系统照跑,只是静默丢掉大部分帧。
-        spread = float(np.percentile(sims, 90) - np.percentile(sims, 10))
-        if spread < min_spread:
-            raise DegenerateEmbedding(
-                f"相邻帧相似度的 10-90 分位展布仅 {spread:.4f} < {min_spread}:"
-                f"该编码器的嵌入空间区分不了这些帧(sim 全在 "
-                f"[{sims.min():.3f}, {sims.max():.3f}]),去重在此空间不可用。"
-                "换一个真实的视觉编码器,或把 channels.vision 关掉。")
         # 去重发生在 sim > thr,故被解码的比例 = F(thr) = keep_frac,
         # 阈值取 keep_frac 分位数(不是 1-keep_frac —— 方向反了会全部去重)
         thr = float(np.quantile(sims, keep_frac))
+
+        # 退化判据:直接检查**标定出的阈值能否达到要求的解码比例**,
+        # 而不是用分布展布这类代理量。
+        #
+        # ⚠️ 初版用 10-90 分位展布判退化,在真实视频上是错的:真实序列
+        # 绝大多数相邻帧在镜头内(sim≈0.99),少数在镜头边界(sim≈0.79),
+        # 分布天然严重偏斜 —— 展布小是正常形状,不是退化。实测 SigLIP2
+        # 在真实帧上 sims∈[0.791,0.997] 判别力充足,却被展布判据误杀。
+        achieved = float((sims < thr).mean())
+        if abs(achieved - keep_frac) > tol:
+            raise DegenerateEmbedding(
+                f"阈值无法达到目标解码比例:要 {keep_frac:.0%},实得 "
+                f"{achieved:.0%}(sims 全在 [{sims.min():.3f}, {sims.max():.3f}],"
+                f"去重点 {thr:.4f})。该嵌入空间区分不了这些帧 —— "
+                "换一个真实的视觉编码器,或把 channels.vision 关掉。")
+
         self.cfg.dedup_embedding_delta = max(1e-6, 1.0 - thr)
         return self.cfg.dedup_embedding_delta
 
