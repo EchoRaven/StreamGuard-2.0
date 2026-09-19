@@ -28,6 +28,35 @@ pip install imageio-ffmpeg av
 export HF_HOME=/data2/hf_cache                        # 别放 /data,已 99%
 ```
 
+### 1.0 ⚠️ 先看驱动,它比显存更早卡住你
+
+本机实测:
+
+```
+NVIDIA-SMI 460.91.03   Driver Version: 460.91.03   CUDA Version: 11.2
+```
+
+驱动 460.91 是 **2021 年 7 月**的版本,最高支持 CUDA 11.2。后果:
+
+| 轮子 | 需要驱动 | 本机可用 |
+|---|---|---|
+| cu121 / cu124（torch 默认） | ≥ 525 | ❌ `RuntimeError: driver too old (found 11020)` |
+| **cu118** | ≥ 450.80.02 | ✅ 靠 CUDA **minor 版本兼容** |
+| cu117 及更早 | ≥ 450.80.02 | ✅ |
+
+CUDA 的 minor 版本兼容规则:11.x 的 runtime 可以跑在任何支持 11.0+ 的驱动上
+(即 ≥450.80.02)。跨 major(11→12)则不兼容,所以 cu12x 全部出局。
+
+```bash
+# 本机唯一可行的安装方式
+pip install torch==2.4.1 torchvision==0.19.1 \
+    --index-url https://download.pytorch.org/whl/cu118
+```
+
+⚠️ 这条**先于**下面所有 Turing 相关的考虑。显存不够只是跑不了大模型,
+驱动不对是 `torch.cuda.is_available()` 直接返回 False,什么都跑不了。
+升级驱动需要 root,且这是共享机器。
+
 ### 1.1 Turing 上的三个坑（会静默降速或报错）
 
 1. **无 bf16。** 所有 `torch_dtype=torch.bfloat16` 改成 `float16`。
