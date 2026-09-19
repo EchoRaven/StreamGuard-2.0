@@ -69,13 +69,16 @@ calibration machinery. The research argument lives in a separate proposal docume
 | 流式 KV 分段（sink/政策/事件/视觉） | ✅ 脱离模型可测 |
 | SFT 数据构造 + 配比重采样 | ✅ |
 | RL 奖励 + 五条反钻空子 | ✅ |
-| 视觉通道（SigLIP 2）/ Agent / 中间层实际训练 | ⬜ 待 GPU |
+| 配置系统（嵌套 dataclass + YAML + 硬件校验） | ✅ |
+| 组件注册表（按名字换实现） | ✅ |
+| 编码器 / Sentinel / CUSUM 控制器 | ✅ 含 mock，无 GPU 可跑 |
+| Agent / 中间层实际训练 | ⬜ 待 GPU |
 
 ### 快速开始
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 93 passed
+make test        #  passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

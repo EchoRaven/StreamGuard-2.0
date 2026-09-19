@@ -1,0 +1,72 @@
+sentinel:
+  name: multichannel
+  sample_fps: 0.5
+  channels:
+    codec: true
+    vision: true
+    asr: false
+    ocr: false
+    chat: false
+  encoder:
+    name: siglip2
+    model_id: google/siglip2-so400m-patch14-384
+    image_size: 384
+    dtype: float16
+    device: cuda:0
+    batch_size: 32
+  fusion_ckpt: null
+  dedup_embedding_delta: 0.02
+  max_decode_fps_multiplier: 3.0
+cusum:
+  h: 5.0
+  drift: 0.1
+  jitter_s: 0.4
+  burst_fps: 4.0
+  rewind_s: 30.0
+coverage:
+  rho: 0.02
+  audit_rate: 0.01
+midtier:
+  name: qwen3vl
+  model_id: Qwen/Qwen3-VL-2B-Instruct
+  dtype: float16
+  attn_impl: sdpa
+  max_length: 4096
+  device: cuda:0
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: all-linear
+    freeze_vit: true
+  context:
+    sink_tokens: 4
+    max_policy_tokens: 2048
+    max_event_tokens: 512
+    max_vision_tokens: 4096
+    vision_window_s: 16.0
+analyst:
+  name: mock
+  model_id: gpt-5
+  max_turns: 6
+  max_tool_calls: 10
+  budget_tokens: 40000
+  timeout_s: 45
+  perception_only: true
+calibration:
+  target_recall: 0.95
+  delta: 0.1
+  aci_gamma: 0.02
+  min_release_events: 3
+reward:
+  gamma_hit: 1.0
+  alpha_delay: 0.5
+  beta_fa: 0.3
+  mu_token: 0.05
+  token_ref: 2000.0
+  max_breakeven_precision: 0.3
+runtime:
+  device: cuda:0
+  ring_buffer_s: 300.0
+  seed: 0
+  cache_dir: null
