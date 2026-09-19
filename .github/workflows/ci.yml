@@ -30,3 +30,8 @@ jobs:
             echo "::error::校验器未能抓到 dirty manifest 的拼接泄漏"
             exit 1
           fi
+      - name: Synthesis smoke test
+        run: |
+          pip install imageio-ffmpeg
+          python -m sg2.synth --demo --out /tmp/sg2ci --n 6 --seed 1
+          python -m sg2.validate /tmp/sg2ci/manifest.jsonl

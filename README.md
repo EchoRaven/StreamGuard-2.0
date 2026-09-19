@@ -17,6 +17,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [`sg2/adapt.py`](sg2/adapt.py) | Few-shot boundary adaptation (prototype / cache / linear head) + conformal calibration |
 | [`sg2/schema.py`](sg2/schema.py) | Records and a loader that enforces train/calibration pool separation |
 | [`sg2/validate.py`](sg2/validate.py) | Dataset-level invariants, including a permutation test for splice leakage |
+| [`sg2/synth/`](sg2/synth/) | Synthesis pipeline — splice planning that provably carries no label information |
+| [`sg2/audit.py`](sg2/audit.py) | Adversarial audit: attack the dataset with the features the sentinel will read |
 | [`docs/`](docs/) | Full implementation plan: model choice, data construction, training, runtime, experiments |
 
 ### Three ideas worth the click
@@ -55,9 +57,14 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 25 passed
+make test        # 37 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
+make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
+make audit       # 压缩域对抗泄漏审计
 ```
+
+`make synth` 用 ffmpeg 的 lavfi 自己生成素材，所以**无需任何真实数据**
+就能端到端验证整条合成流水线。
 
 ### 选型（理由见 01_MODELS）
 
