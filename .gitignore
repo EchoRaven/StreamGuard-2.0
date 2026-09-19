@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+videos/
+asr/
+chat/
+*.mp4

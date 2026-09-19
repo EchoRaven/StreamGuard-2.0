@@ -1,0 +1,7 @@
+{
+  "name": "safewatch",
+  "version": "PLACEHOLDER",
+  "source": "https://github.com/…  (填入 SafeWatch 正式发布地址)",
+  "_note": "占位文件。类别 id 必须从 SafeWatch 正式发布中抄录,不得自造。填入前 validate 会把未知类别当作普通字符串放行。",
+  "categories": []
+}
