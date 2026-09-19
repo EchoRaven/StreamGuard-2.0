@@ -159,7 +159,34 @@ def check_axis_coverage(records: list[ClipRecord]) -> list[Finding]:
     return out
 
 
-CHECKS = (check_pool_disjoint, check_splice_balanced, check_cut_position_leakage,
+def check_json_schema(records: list[ClipRecord]) -> list[Finding]:
+    """逐条记录对照 spec/manifest.schema.json。
+
+    schema 只能查**单条**记录的合法性;跨记录的分布性质(拼接是否泄漏)
+    由本模块其他检查负责。两层不可互相替代。
+    """
+    try:
+        import json
+        import jsonschema
+    except ImportError:
+        return [Finding("warn", "json_schema", "未安装 jsonschema,跳过逐条校验")]
+    from pathlib import Path
+    sp = Path(__file__).resolve().parents[1] / "spec/manifest.schema.json"
+    if not sp.exists():
+        return [Finding("warn", "json_schema", f"schema 不存在: {sp}")]
+    v = jsonschema.Draft202012Validator(json.loads(sp.read_text()))
+    bad = []
+    for r in records:
+        errs = list(v.iter_errors(r.to_json()))
+        if errs:
+            bad.append(f"{r.id}: {errs[0].message[:70]}")
+    if bad:
+        return [Finding("error", "json_schema",
+                        f"{len(bad)} 条不合 schema,例: {bad[:2]}")]
+    return []
+
+
+CHECKS = (check_json_schema, check_pool_disjoint, check_splice_balanced, check_cut_position_leakage,
           check_calibration_sample_size, check_axis_coverage)
 
 

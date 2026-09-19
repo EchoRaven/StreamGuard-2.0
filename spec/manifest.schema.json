@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamguard2/spec/manifest.schema.json",
+  "title": "SG2 ClipRecord",
+  "type": "object",
+  "required": ["id","source","media","label","axes","metadata_adversarial","splice","split","pool"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "source": {
+      "type": "object", "required": ["kind"], "additionalProperties": true,
+      "properties": {
+        "kind": {"enum": ["native", "synthetic"]},
+        "provenance": {"type": "string", "description": "切分按此分组,防同源泄漏"},
+        "license": {"type": "string"},
+        "url": {"type": "string"}
+      }
+    },
+    "media": {
+      "type": "object", "required": ["duration_s","fps","codec"], "additionalProperties": true,
+      "properties": {
+        "duration_s": {"type": "number", "exclusiveMinimum": 0},
+        "fps": {"type": "number", "exclusiveMinimum": 0},
+        "resolution": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "codec": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "reencode": {"type": "object"}
+      }
+    },
+    "label": {
+      "type": "object", "required": ["safe","categories","events"], "additionalProperties": false,
+      "properties": {
+        "safe": {"type": "boolean"},
+        "categories": {"type": "array", "items": {"type": "string"}},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/event"}}
+      },
+      "allOf": [
+        {"if": {"properties": {"safe": {"const": true}}},
+         "then": {"properties": {"events": {"maxItems": 0}}}},
+        {"if": {"properties": {"safe": {"const": false}}},
+         "then": {"properties": {"events": {"minItems": 1}},
+                  "$comment": "safe=false 必须有 events —— 没有 ν 就测不了检测延迟"}}
+      ]
+    },
+    "axes": {
+      "type": "object",
+      "required": ["temporal_sparsity","perceptual_subtlety","modality_locus","context_dependence"],
+      "additionalProperties": false,
+      "properties": {
+        "temporal_sparsity": {
+          "type": "object", "required": ["needle_total_s","video_duration_s","ratio","bin"],
+          "properties": {
+            "needle_total_s": {"type": "number", "minimum": 0},
+            "video_duration_s": {"type": "number", "exclusiveMinimum": 0},
+            "ratio": {"type": "number", "minimum": 0, "maximum": 1},
+            "bin": {"enum": ["dense","sparse","ultra_sparse"]}
+          }
+        },
+        "perceptual_subtlety": {
+          "type": "object", "required": ["min_evidence_pixel_area_frac","bin"],
+          "properties": {
+            "min_evidence_pixel_area_frac": {"type": "number", "minimum": 0, "maximum": 1},
+            "evidence_contrast": {"type": "number"},
+            "evidence_span_frames": {"type": "integer", "minimum": 0},
+            "requires_ocr": {"type": "boolean"},
+            "bin": {"enum": ["salient","moderate","subtle"]}
+          }
+        },
+        "modality_locus": {
+          "type": "object", "required": ["decisive","bin"],
+          "properties": {
+            "decisive": {"type": "array", "items": {"$ref": "#/$defs/modality"}, "minItems": 1},
+            "pixel_only_sufficient": {"type": "boolean"},
+            "bin": {"enum": ["visual","speech","text","composition","multi"]}
+          }
+        },
+        "context_dependence": {
+          "type": "object", "required": ["window_required_s","bin"],
+          "properties": {
+            "frame_alone_sufficient": {"type": "boolean"},
+            "window_required_s": {"type": "number", "minimum": 0},
+            "bin": {"enum": ["self_contained","short_context","long_context"]}
+          }
+        }
+      }
+    },
+    "metadata_adversarial": {
+      "type": "object", "required": ["condition"], "additionalProperties": true,
+      "properties": {
+        "title": {"type": ["string","null"]},
+        "description": {"type": ["string","null"]},
+        "asr_path": {"type": ["string","null"]},
+        "chat_path": {"type": ["string","null"]},
+        "condition": {"enum": ["aligned","fp_bait","camouflage"],
+                      "$comment": "fp_bait 必须 safe=true;camouflage 必须 safe=false"}
+      }
+    },
+    "splice": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "required": ["host_id","n_cuts","cuts","reencoded_uniformly"],
+         "additionalProperties": true,
+         "properties": {
+           "host_id": {"type": "string"},
+           "n_cuts": {"type": "integer", "minimum": 0},
+           "cuts": {"type": "array", "items": {
+             "type": "object", "required": ["t_s","kind"],
+             "properties": {
+               "t_s": {"type": "number", "minimum": 0},
+               "kind": {"enum": ["benign","needle"]},
+               "insert_id": {"type": ["string","null"]}}}},
+           "audio_crossfade_ms": {"type": "integer", "minimum": 0},
+           "loudness_lufs": {"type": "number"},
+           "reencoded_uniformly": {"const": true,
+             "$comment": "必须为 true。压缩域 sentinel 读编码器指纹,不统一即捷径"}
+         }}
+      ]
+    },
+    "split": {"enum": ["train","calib","test","zeroday_holdout"]},
+    "pool": {"enum": ["exemplar","compile","calibration","eval"]}
+  },
+  "$defs": {
+    "modality": {"enum": ["pixel","speech","ocr","motion","composition"]},
+    "event": {
+      "type": "object",
+      "required": ["event_id","category","t_start_s","t_end_s","severity","evidence_modality"],
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {"type": "string"},
+        "category": {"type": "string"},
+        "t_start_s": {"type": "number", "minimum": 0, "$comment": "这就是 QCD 里的 ν"},
+        "t_end_s": {"type": "number", "exclusiveMinimum": 0},
+        "frame_start": {"type": "integer", "minimum": 0},
+        "frame_end": {"type": "integer", "minimum": 0},
+        "severity": {"enum": ["low","medium","high"]},
+        "evidence_modality": {"type": "array", "items": {"$ref": "#/$defs/modality"}, "minItems": 1},
+        "sufficient_alone": {"type": "array", "items": {"$ref": "#/$defs/modality"}},
+        "bbox_track": {"type": ["array","null"]},
+        "annotator_ids": {"type": "array", "items": {"type": "string"}},
+        "agreement": {"type": ["number","null"], "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}
