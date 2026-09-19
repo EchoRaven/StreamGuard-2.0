@@ -1,6 +1,15 @@
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 videos/
 asr/
 chat/
+features/
+ckpt/
+runs/
 *.mp4
+*.mkv
+*.webm
+examples/manifest.*.jsonl

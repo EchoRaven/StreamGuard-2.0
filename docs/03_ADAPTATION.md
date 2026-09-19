@@ -90,6 +90,14 @@ LogisticRegression(C=1.0, class_weight="balanced", max_iter=2000)
 | recall ≥ 95% | 90% | 2 | ~105 |
 | recall ≥ 99% | 90% | 0 | ~230 |
 
+**阈值按置信下界选，不按经验召回选。** 这是两回事：校准集上经验召回 95%
+并不等于「recall ≥ 95% 有 90% 置信」。正确做法是搜最大的 τ 使
+`recall_lower_bound(n, misses) ≥ target`。由此：
+
+- n=45 → 恰好只允许**零漏**（下界 0.9501）
+- n=120 → 允许 2 漏
+- n<45 → 即使零漏也够不到目标，状态只能是 `ESTIMATED`
+
 `n < 45` 时**不给保证，给区间估计**，并显式标记未校准（§3）。
 
 不用 Hoeffding/DKW：同样目标它要 n ≳ 500，精确二项省一个数量级。

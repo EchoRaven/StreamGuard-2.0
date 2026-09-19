@@ -178,7 +178,11 @@ class FewShotBoundary:
     # ---------- 机制 D ----------
     def calibrate(self, pos_emb: np.ndarray, neg_emb: np.ndarray | None = None
                   ) -> CalibrationStatus:
-        """在校准正例上拟合 tau,使经验 recall 达标,并定状态。
+        """在校准正例上选阈值,并定校准状态。
+
+        关键:阈值按**置信下界**选,不按经验召回选。经验召回 95% 不等于
+        "recall >= 95% 有 90% 置信" —— 后者才是 conformal 要给的东西。
+        n 太小时即使零漏也够不到目标,此时状态为 ESTIMATED,不是 CALIBRATED。
 
         pos_emb 必须来自 pool="calibration",且未被用作 exemplar/compile。
         """
@@ -186,16 +190,31 @@ class FewShotBoundary:
         n = pos.shape[0]
         if n == 0:
             self._status = CalibrationStatus.UNCALIBRATED
+            self._n_calib = self._n_miss = 0
             return self._status
-        scores = np.array([self.score(p) for p in pos])
-        n_min = min_calibration_n(self.target_recall, self.delta)
-        # 取使经验 recall >= target 的最大阈值(更严即更少假阳)
-        k = max(1, math.floor(n * self.target_recall))
-        self._tau = float(np.sort(scores)[n - k])
-        self._n_miss = int((scores < self._tau).sum())
-        self._n_calib = n
-        self._status = (CalibrationStatus.CALIBRATED if n >= n_min
-                        else CalibrationStatus.ESTIMATED)
+
+        scores = np.sort(np.array([self.score(p) for p in pos]))
+
+        # i = 若取 tau=scores[i] 则校准集上的漏报数。下界随 i 单调下降,
+        # 故取仍能达标的最大 i(阈值最严 => 假阳最少)。
+        best_i = None
+        for i in range(n):
+            if recall_lower_bound(n, i, self.delta) >= self.target_recall:
+                best_i = i
+            else:
+                break
+
+        if best_i is None:
+            # 零漏也够不到目标 => 样本量不足,只能给估计
+            self._tau = float(scores[0])
+            self._n_miss = 0
+            self._n_calib = n
+            self._status = CalibrationStatus.ESTIMATED
+        else:
+            self._tau = float(scores[best_i])
+            self._n_miss = best_i
+            self._n_calib = n
+            self._status = CalibrationStatus.CALIBRATED
         self._epoch += 1
         return self._status
 

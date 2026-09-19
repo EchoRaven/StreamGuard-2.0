@@ -134,3 +134,46 @@ def test_epoch_increments_on_each_calibration(data):
     b.add_prototype(pos[185])
     b.calibrate(pos[100:180])
     assert b.epoch == e1 + 1
+
+
+# ---------- 回归:阈值必须按置信下界选,不按经验召回 ----------
+
+def test_calibrated_bound_always_meets_target(data):
+    """CALIBRATED 状态下,声称的下界必须真的 >= target。
+
+    回归:初版按经验召回选阈值,n=120 且经验召回恰好 95% 时下界远低于 95%,
+    等于声称一个没挣到的保证。
+    """
+    pos, neg = data
+    for n in (45, 80, 150):
+        b = FewShotBoundary(dim=D, target_recall=0.95, delta=0.10)
+        b.fit_head(np.vstack([pos[:60], neg[:60]]),
+                   np.r_[np.ones(60), -np.ones(60)])
+        if b.calibrate(pos[100:100 + n]) is CalibrationStatus.CALIBRATED:
+            assert b.decide(pos[190]).claim_recall_bound() >= 0.95, \
+                f"n={n} 声称 CALIBRATED 但下界不达标"
+
+
+def test_below_n_min_never_reaches_calibrated(data):
+    """n < 45 时,即使校准集上零漏也只能是 ESTIMATED。"""
+    pos, neg = data
+    for n in (5, 10, 20, 44):
+        b = FewShotBoundary(dim=D)
+        b.fit_head(np.vstack([pos[:60], neg[:60]]),
+                   np.r_[np.ones(60), -np.ones(60)])
+        assert b.calibrate(pos[100:100 + n]) is CalibrationStatus.ESTIMATED, \
+            f"n={n} 不应达到 CALIBRATED"
+
+
+def test_allowed_misses_grow_with_n(data):
+    """n 越大,能容忍的漏报越多 —— 这正是文档表格 45/77/105 的结构。"""
+    pos, neg = data
+    misses = []
+    for n in (45, 120, 300):
+        b = FewShotBoundary(dim=D)
+        b.fit_head(np.vstack([pos[:60], neg[:60]]),
+                   np.r_[np.ones(60), -np.ones(60)])
+        b.calibrate(pos[100:100 + n])
+        misses.append(b._n_miss)
+    assert misses[0] == 0, "n=45 应恰好只允许零漏"
+    assert misses == sorted(misses), f"允许漏报数未随 n 单调增: {misses}"
