@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: help install test validate sample synth audit lint clean
+.PHONY: help install test validate sample synth audit doctor lint clean
 
 help:
 	@echo "make install   安装开发依赖"
@@ -9,6 +9,7 @@ help:
 	@echo "make validate  校验样例(clean 应 0 error, dirty 应 2 error)"
 	@echo "make synth     用 lavfi 合成 demo 数据集(无需真实素材)"
 	@echo "make audit     压缩域对抗泄漏审计"
+	@echo "make doctor    环境自检(驱动/torch/显存/配置/磁盘)"
 	@echo "make lint      ruff 检查"
 
 install:
@@ -34,6 +35,9 @@ synth:
 
 audit:
 	$(PY) -m sg2.audit $(SYNTH_OUT)/manifest.jsonl $(SYNTH_OUT)/videos
+
+doctor:
+	$(PY) scripts/doctor.py --config configs/turing_local.yaml
 
 lint:
 	$(PY) -m ruff check sg2/ tests/ examples/

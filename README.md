@@ -82,6 +82,7 @@ make test        #  passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
+make doctor      # 环境自检：驱动/torch/显存/配置/磁盘
 ```
 
 `make synth` 用 ffmpeg 的 lavfi 自己生成素材，所以**无需任何真实数据**
@@ -123,7 +124,10 @@ make audit       # 压缩域对抗泄漏审计
 
 1. **磁盘** — 完整数据集约需 2.2 TB。
 2. **数据** — 无视频安全数据；需 SafeWatch 类别表与获取路径，且须核实其标注是否带时间戳。
-3. **GPU** — 现有 4× RTX 2080 Ti 11GB（Turing sm_75，无 bf16/FA2）可做 M1–M4；8B LoRA 需 ≥40GB 卡。
+3. **驱动**（比显存更早卡住）— 460.91（2021-07），最高 CUDA 11.2。
+   cu121/cu124 直接 `RuntimeError: driver too old`；靠 CUDA minor 兼容只能用 **cu118**。
+   升级驱动需 root，且这是共享机器。`make doctor` 会按约束顺序逐层检查。
+4. **GPU** — 4× RTX 2080 Ti 11GB（Turing sm_75，无 bf16/FA2）；8B LoRA 需 ≥40GB 卡。
 
 ## License
 
