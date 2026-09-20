@@ -95,7 +95,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **能力路由**（低级处理不了才上送，非风险驱动） | ✅ |
 | **实时可行性**（截止期/余量/单卡流数，独立于成本） | ✅ |
 | **吞吐基准**（batching 实测，10 倍差距） | ✅ |
-| **流式训练模拟器**（复用运行时采样器） | ✅ |
+| **流式训练模拟器**（复用运行时采样器 + rollout 对照） | ✅ |
 | **帧驱逐**（5 种策略 + 自监督重要性，零人工标注） | ✅ |
 | **SigLIP 文本塔**（零样本，唯一真 training-free 的路径） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
@@ -112,7 +112,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 393 passed
+make test        # 398 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

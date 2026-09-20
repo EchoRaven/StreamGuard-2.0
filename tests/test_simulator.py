@@ -151,3 +151,68 @@ def test_scarcity_needs_many_streams_not_oversampling():
              for i in range(30)]
     many = resample_ticks(simulate_many(_sim(), specs), rng=random.Random(0))
     assert len(many) > len(one) * 5
+
+
+# ==================== teacher forcing 与状态偏移 ====================
+
+def _policy(acc, seed=0):
+    r = random.Random(seed)
+    def pol(st):
+        if r.random() < acc:
+            return st["target"]
+        return r.choice([x for x in ("hold", "flag", "clear")
+                         if x != st["target"]])
+    return pol
+
+
+ROLL = dict(duration_s=180.0, nu_s=60.0, nu_end_s=68.0, alarm_at=62.0)
+
+
+def test_perfect_policy_matches_teacher_forcing():
+    """准确率 100% 时两者必须完全一致 —— 否则 rollout 实现有 bug。"""
+    from sg2.train.simulator import rollout, state_shift, teacher_forced
+    sim = _sim()
+    sh = state_shift(teacher_forced(sim, **ROLL),
+                     rollout(sim, _policy(1.0), **ROLL))
+    assert sh["normalised_shift"] == 0.0 and sh["event_state_mismatch"] == 0
+
+
+def test_state_shift_grows_as_policy_degrades():
+    """偏移随准确率下降单调增 —— 这正是暴露偏差。"""
+    from sg2.train.simulator import rollout, state_shift, teacher_forced
+    sim = _sim()
+    tf = teacher_forced(sim, **ROLL)
+    shifts = [state_shift(tf, rollout(sim, _policy(a), **ROLL))["mismatch_rate"]
+              for a in (0.9, 0.7, 0.5, 0.3)]
+    assert shifts == sorted(shifts)
+
+
+def test_realistic_accuracy_gives_large_state_mismatch():
+    """SFT 后准确率通常在 70-90%,此时偏移已经不可忽略。
+
+    实测 70% 时 event_open 比例:teacher forcing 3.9% vs rollout 22.6%,
+    **差 5.8 倍** —— 模型训练时几乎没见过"事件开着"的状态。
+    """
+    from sg2.train.simulator import rollout, state_shift, teacher_forced
+    sim = _sim()
+    sh = state_shift(teacher_forced(sim, **ROLL),
+                     rollout(sim, _policy(0.7), **ROLL))
+    assert sh["mismatch_rate"] > 0.1
+    assert sh["rollout"]["event_open"] > sh["teacher_forced"]["event_open"] * 2
+
+
+def test_hindsight_expert_is_free():
+    """专家不需要人工也不需要 frontier —— ν 已知,当时该做什么直接算得出。"""
+    from sg2.train.simulator import hindsight_relabel, rollout
+    sim = _sim()
+    lab = hindsight_relabel(rollout(sim, _policy(0.7), **ROLL))
+    assert lab and all(a in ("hold", "flag", "clear") for _, a in lab)
+    assert all("event_open" in st for st, _ in lab)
+
+
+def test_relabel_only_covers_escalated_ticks():
+    """没升级的 tick 中间层根本没看过,不该进训练集。"""
+    from sg2.train.simulator import hindsight_relabel, rollout
+    sim = _sim()
+    ro = rollout(sim, _policy(0.7), **ROLL)
+    assert len(hindsight_relabel(ro)) == sum(t.escalated for t in ro)

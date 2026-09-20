@@ -152,6 +152,106 @@ class StreamSimulator:
         return "flag" if t <= end else "clear"
 
 
+@dataclass
+class RolloutTick(SimTick):
+    """策略自己走出来的 tick。比 SimTick 多记**状态**。
+
+    teacher forcing 下这些状态都是"假设前面全判对"推出来的;
+    真实 rollout 下它们由模型自己的历史决定。
+    """
+    action: str = "clear"              # 策略实际输出的动作
+    event_open: bool = False           # S2 里有没有累积证据
+    event_tokens: int = 0              # S2 的占用
+    n_since_open: int = 0              # 事件开着多少个 tick 了
+
+
+def rollout(sim: "StreamSimulator", policy, *, duration_s: float,
+            nu_s: float | None, nu_end_s: float | None = None,
+            alarm_at: float | None = None) -> list[RolloutTick]:
+    """让**策略自己驱动状态演化**,而不是假设它每步都对。
+
+    这是 teacher forcing 的对照组。两者的差别在于 S2:
+      teacher forcing —— 状态按"前面全判对"推
+      rollout         —— 状态按策略**实际**做了什么推
+
+    `policy(tick_state) -> action`,action ∈ hold/flag/clear/uncovered。
+    """
+    base = sim.simulate(duration_s=duration_s, nu_s=nu_s,
+                        nu_end_s=nu_end_s, alarm_at=alarm_at)
+    out: list[RolloutTick] = []
+    event_open, ev_tokens, n_since = False, 0, 0
+
+    for t in base:
+        state = {"t_s": t.t_s, "in_event": t.in_event,
+                 "escalated": t.escalated, "alarmed": t.alarmed,
+                 "event_open": event_open, "event_tokens": ev_tokens,
+                 "n_since_open": n_since, "target": t.label}
+        act = policy(state) if t.escalated else "hold"
+
+        # 状态按**实际动作**演化 —— 这正是 teacher forcing 拿不到的
+        if act == "flag":
+            event_open = True
+            ev_tokens += 40
+            n_since += 1
+        elif act == "clear" and event_open:
+            event_open = False
+            ev_tokens = 0
+            n_since = 0
+        elif event_open:
+            n_since += 1
+
+        out.append(RolloutTick(
+            t_s=t.t_s, frame_idx=t.frame_idx, decoded=t.decoded,
+            alarmed=t.alarmed, escalated=t.escalated,
+            window_t_s=t.window_t_s, evicted=t.evicted,
+            in_event=t.in_event, label=t.label, action=act,
+            event_open=event_open, event_tokens=ev_tokens,
+            n_since_open=n_since))
+    return out
+
+
+def teacher_forced(sim: "StreamSimulator", **kw) -> list[RolloutTick]:
+    """teacher forcing 对照:状态按**真值动作**演化。"""
+    return rollout(sim, lambda st: st["target"], **kw)
+
+
+def hindsight_relabel(ticks: list[RolloutTick]) -> list[tuple[dict, str]]:
+    """DAgger 式回标:对策略**实际访问到的状态**给出正确动作。
+
+    ⚠️ **专家是免费的** —— 合成拼接给了 ν,所以任意状态下"当时该做什么"
+    直接算得出,不需要人工、也不需要 frontier 模型来当老师。
+    这是 SafeWatch 无时间戳时合成流水线的又一个理由。
+    """
+    return [({"t_s": t.t_s, "event_open": t.event_open,
+              "event_tokens": t.event_tokens, "n_since_open": t.n_since_open,
+              "in_event": t.in_event, "alarmed": t.alarmed}, t.label)
+            for t in ticks if t.escalated]
+
+
+def state_shift(tf: list[RolloutTick], ro: list[RolloutTick]) -> dict:
+    """量化 teacher forcing 与真实 rollout 的**状态分布偏移**。
+
+    ⚠️ 偏移小 -> teacher forcing 够用,DAgger/RL 是过度设计。
+       偏移大 -> 模型训练时从没见过它上线后会遇到的状态。
+    先量再决定,别直接上 RL。
+    """
+    def dist(ts):
+        n = len(ts) or 1
+        return {"event_open": sum(t.event_open for t in ts) / n,
+                "mean_event_tokens": float(np.mean([t.event_tokens for t in ts])),
+                "mean_since_open": float(np.mean([t.n_since_open for t in ts]))}
+    a, b = dist(tf), dist(ro)
+    keys = set(a) | set(b)
+    tvd = 0.5 * sum(abs(a[k] - b[k]) / max(abs(a[k]), abs(b[k]), 1e-9)
+                    for k in keys) / len(keys)
+    mismatch = sum(1 for x, y in zip(tf, ro) if x.event_open != y.event_open)
+    return {"teacher_forced": {k: round(v, 3) for k, v in a.items()},
+            "rollout": {k: round(v, 3) for k, v in b.items()},
+            "normalised_shift": round(tvd, 4),
+            "event_state_mismatch": mismatch,
+            "mismatch_rate": round(mismatch / max(len(tf), 1), 4)}
+
+
 def resample_ticks(ticks: list[SimTick], *, target_mix: dict | None = None,
                    rng: random.Random | None = None) -> list[SimTick]:
     """按目标配比重采样 tick。
