@@ -55,6 +55,7 @@ class StreamContext:
     _policy: list[Block] = field(default_factory=list, repr=False)
     _event: deque[Block] = field(default_factory=deque, repr=False)
     _vision: deque[Block] = field(default_factory=deque, repr=False)
+    _importance: deque[float] = field(default_factory=deque, repr=False)
     _policy_key: str | None = None
     _event_open: bool = False
     _evictions: int = 0
@@ -79,21 +80,63 @@ class StreamContext:
 
     # ---------- S3 视觉滑窗 ----------
 
-    def append_frame(self, tokens: int, t_s: float) -> list[Block]:
+    def append_frame(self, tokens: int, t_s: float,
+                     importance: float | None = None) -> list[Block]:
         """追加一帧的视觉 token,返回被驱逐的块。
 
         双重约束:token 上限与时间窗,任一超出即驱逐。
+
+        ⚠️ `importance` 给定时按**重要性**驱逐而非纯 FIFO。
+        FIFO 对流式检测特别糟:实测在预算 3-8 帧下,FIFO 与等间隔采样
+        **全部丢掉 needle 导致判决翻转**,而覆盖/显著性策略全部保住
+        (见 sg2/evict.py)。needle 常常就在刚过去那段,而 FIFO 丢的
+        恰恰是最早进来的。
+
+        重要性可来自压缩域(关键帧/运动能量,免费)或 sentinel 分数,
+        **不需要人工标注**。
         """
         if tokens > self.max_vision_tokens:
             raise ValueError(f"单帧 {tokens} token 超出视觉窗上限")
-        self._vision.append(Block(Segment.VISION, tokens, t_s=t_s))
+        self._vision.append(Block(Segment.VISION, tokens, t_s=t_s,
+                                  tag=f"imp={importance:.3f}"
+                                  if importance is not None else ""))
+        if importance is not None:
+            self._importance.append(importance)
         evicted: list[Block] = []
-        while self._vision and (
-                self.vision_tokens > self.max_vision_tokens
-                or t_s - self._vision[0].t_s > self.vision_window_s):
-            evicted.append(self._vision.popleft())
-            self._evictions += 1
+
+        # 时间窗:只能按时间驱逐,与重要性无关(超窗的帧本来就该走)
+        while self._vision and t_s - self._vision[0].t_s > self.vision_window_s:
+            evicted.append(self._pop_oldest())
+
+        # token 预算:有重要性信息时丢**最不重要**的,否则退回 FIFO
+        while self._vision and self.vision_tokens > self.max_vision_tokens:
+            if self._importance and len(self._importance) == len(self._vision):
+                i = min(range(len(self._importance) - 1),
+                        key=lambda k: self._importance[k]) \
+                    if len(self._vision) > 1 else 0
+                evicted.append(self._pop_at(i))
+            else:
+                evicted.append(self._pop_oldest())
         return evicted
+
+    def _pop_oldest(self) -> Block:
+        b = self._vision.popleft()
+        if self._importance:
+            self._importance.popleft()
+        self._evictions += 1
+        return b
+
+    def _pop_at(self, i: int) -> Block:
+        """丢掉第 i 个。**最新帧永不丢** —— 它正是当前要判的那帧。"""
+        items = list(self._vision)
+        imps = list(self._importance)
+        b = items.pop(i)
+        if imps:
+            imps.pop(i)
+        self._vision.clear(); self._vision.extend(items)
+        self._importance.clear(); self._importance.extend(imps)
+        self._evictions += 1
+        return b
 
     # ---------- S2 事件上下文 ----------
 
