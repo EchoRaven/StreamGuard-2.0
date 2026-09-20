@@ -86,6 +86,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **SafeWatch-Bench 接入**（1400 条 → SG2 格式，0 error） | ✅ |
 | **政策敏感度指标**（反事实翻转，实测基线 1.00） | ✅ |
 | **政策增强**（六种，防 SFT 学成背政策） | ✅ |
+| **政策动物园**（多 schema 混合 + 数量/多样性解耦消融） | ✅ |
+| **反事实一致性奖励**（RL 能做而 SFT 做不到的） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
@@ -100,7 +102,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 312 passed
+make test        # 327 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

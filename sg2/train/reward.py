@@ -198,6 +198,111 @@ def fa_exchange_rate(cfg: RewardConfig | None = None) -> float:
     return cfg.beta_fa / cfg.gamma_hit
 
 
+@dataclass
+class CounterfactualPair:
+    """同一窗口在两条政策下的一对 rollout。
+
+    政策 A 覆盖该内容,政策 B 不覆盖。正确行为是 A 下 flag、B 下不 flag。
+    """
+    raw_covering: str
+    raw_not_covering: str
+    target_citation: str | None = None    # A 中目标条款的(增强后)id
+    tokens: int = 0
+
+
+@dataclass
+class CFConfig:
+    """反事实一致性奖励。
+
+    **这是 SFT 结构上做不到的事。** 政策敏感度是关于**一对输入**的性质:
+    同一视频换政策,判决应翻转。SFT 一次只看一个 (输入,目标),
+    表达不了"这两个输出之间应有什么关系"。
+
+    ⚠️ 必须按**方向**判而不是按"是否不同"。只奖励"翻转"的话,最优策略
+    是**一律翻转** —— 看到政策变了就换个答案,与内容无关。
+    """
+    gamma_consistent: float = 0.5     # 方向正确的翻转
+    beta_insensitive: float = 0.4     # 两边同答(在背不在读)
+    beta_reversed: float = 0.6        # 翻转但方向反了 —— 比不敏感更糟
+    require_citation: bool = True     # A 下的 flag 必须引对条款
+
+    def __post_init__(self):
+        if self.beta_reversed <= self.beta_insensitive:
+            raise ValueError(
+                f"beta_reversed({self.beta_reversed}) 必须 > "
+                f"beta_insensitive({self.beta_insensitive}):方向反了比"
+                "不敏感更糟 —— 前者是学到了错误关系,后者只是没学到。")
+
+
+@dataclass
+class CFBreakdown:
+    total: float
+    outcome: str                      # consistent|insensitive|reversed|invalid
+    verdict_covering: str = ""
+    verdict_not_covering: str = ""
+    citation_ok: bool = False
+
+    def __str__(self) -> str:
+        return (f"R_cf={self.total:+.3f} [{self.outcome}] "
+                f"{self.verdict_covering}→{self.verdict_not_covering}"
+                f"{' 引用✓' if self.citation_ok else ''}")
+
+
+def counterfactual_reward(pair: CounterfactualPair,
+                          cfg: CFConfig | None = None) -> CFBreakdown:
+    """按方向判的反事实一致性奖励。
+
+    四种结局:
+        consistent  A=flag(引对) 且 B≠flag   -> 正奖励
+        reversed    A≠flag 且 B=flag         -> 最重惩罚(学到了错误关系)
+        insensitive 两边同答                  -> 惩罚(在背不在读)
+        invalid     任一侧输出非法            -> 0
+    """
+    cfg = cfg or CFConfig()
+    a = Step(0.0, pair.raw_covering, pair.tokens).parse()
+    b = Step(0.0, pair.raw_not_covering, pair.tokens).parse()
+    if a is None or b is None:
+        return CFBreakdown(0.0, "invalid")
+
+    va, vb = a["action"], b["action"]
+    a_flag = va == Action.FLAG
+    b_flag = vb == Action.FLAG
+    cite_ok = True
+    if a_flag and cfg.require_citation and pair.target_citation:
+        cite_ok = a.get("policy_citation") == pair.target_citation
+
+    if a_flag and not b_flag:
+        r = cfg.gamma_consistent if cite_ok else 0.0
+        return CFBreakdown(r, "consistent" if cite_ok else "wrong_citation",
+                           va, vb, cite_ok)
+    if b_flag and not a_flag:
+        return CFBreakdown(-cfg.beta_reversed, "reversed", va, vb, cite_ok)
+    return CFBreakdown(-cfg.beta_insensitive, "insensitive", va, vb, cite_ok)
+
+
+def assert_cf_not_gameable(cfg: CFConfig | None = None) -> None:
+    """检查"一律翻转"不会成为最优策略。
+
+    构造两个窗口:一个该翻(内容被覆盖),一个不该翻(内容本就安全,
+    两边都应 clear)。一律翻转的策略在第二个上会被判 reversed。
+    """
+    cfg = cfg or CFConfig()
+    F = json.dumps({"action": "flag", "category": "C1",
+                    "policy_citation": "X1"})
+    C = json.dumps({"action": "clear"})
+
+    honest = (counterfactual_reward(
+        CounterfactualPair(F, C, target_citation="X1"), cfg).total
+        + counterfactual_reward(CounterfactualPair(C, C), cfg).total)
+    always_flip = (counterfactual_reward(
+        CounterfactualPair(F, C, target_citation="X1"), cfg).total
+        + counterfactual_reward(CounterfactualPair(C, F), cfg).total)
+    if always_flip >= honest:
+        raise ValueError(
+            f"退化:一律翻转得分 {always_flip:.3f} >= 诚实策略 {honest:.3f}。"
+            "beta_reversed 需大于 beta_insensitive。")
+
+
 def assert_not_degenerate(cfg: RewardConfig | None = None, *,
                           max_breakeven_precision: float = 0.3) -> None:
     """检查配置不会让"永远沉默"成为最优策略。
