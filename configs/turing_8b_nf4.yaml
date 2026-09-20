@@ -28,12 +28,12 @@ coverage:
   audit_rate: 0.01
 midtier:
   name: qwen3vl
-  model_id: Qwen/Qwen3-VL-4B-Instruct
+  model_id: Qwen/Qwen3-VL-8B-Instruct
   dtype: float16
   attn_impl: sdpa
   max_length: 4096
   device: cuda:0
-  quantization: null
+  quantization: nf4
   max_memory_per_gpu: null
   lora:
     rank: 16

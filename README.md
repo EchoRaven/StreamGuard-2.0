@@ -77,6 +77,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **政策语料**（SafeWatch 六类 + 版本化 + 生命周期） | ✅ |
 | **out-of-policy**（第四动作 + 补缺 + 人工闸门） | ✅ |
 | **政策归纳**（从 k 条标签反推定义 + 迭代循环） | ✅ |
+| **judge 能力基准**（真值已知 + 常数基线 + 退化检查） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |

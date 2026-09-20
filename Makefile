@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: help install test validate sample synth audit doctor lint clean
+.PHONY: help install test validate sample synth audit doctor judge compare lint clean
 
 help:
 	@echo "make install   安装开发依赖"
@@ -10,6 +10,8 @@ help:
 	@echo "make synth     用 lavfi 合成 demo 数据集(无需真实素材)"
 	@echo "make audit     压缩域对抗泄漏审计"
 	@echo "make doctor    环境自检(驱动/torch/显存/配置/磁盘)"
+	@echo "make judge     judge 能力基准(真值已知,不需真实数据)"
+	@echo "make compare   backbone 横向对比"
 	@echo "make lint      ruff 检查"
 
 install:
@@ -38,6 +40,14 @@ audit:
 
 doctor:
 	$(PY) scripts/doctor.py --config configs/turing_local.yaml
+
+MODELS ?= 4B 8B-nf4
+
+judge:
+	$(PY) scripts/judge_bench.py --models $(MODELS) --n 12
+
+compare:
+	$(PY) scripts/compare_backends.py --models $(MODELS) --n 8
 
 lint:
 	$(PY) -m ruff check sg2/ tests/ examples/
