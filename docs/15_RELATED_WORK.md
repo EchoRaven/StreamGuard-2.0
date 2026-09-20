@@ -177,8 +177,8 @@ Kotte 2026, *When Can Conformal Risk Control Certify LLM Outputs?*
 ## 5. 必做的事
 
 - [x] ~~读 2606.29054~~ —— **已读，见 §6。不是威胁，反而给了升级率下界**
-- [ ] 把精确二项（Clopper-Pearson）放进 Hoeffding/Bernstein/e-CRC 的层级里对比
-- [ ] 实现 anytime-valid monitor（SAVeR-FF 式）替代跨域场景的 ACI
+- [x] ~~把精确二项放进层级对比~~ —— **已做，精确二项大幅胜出（105 vs 1657/466/265），见 `docs/16`**
+- [x] ~~实现 anytime-valid monitor~~ —— **已做，跨域漂移下弃权 100% 达到下界，而 ACI 经验风险 20.2%**
 - [ ] 读 SafeLens 全文，复现其数字作为基线
 - [ ] 读 2605.06350，把能力路由明确定位为其实例并引用
 - [ ] 读 2606.12476，厘清 QCD 部分的增量到底是什么

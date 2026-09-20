@@ -61,6 +61,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [13_STREAMING_TRAINING](docs/13_STREAMING_TRAINING.md) | **流式训练的七个难点**：采样器复用、正例稀缺、为什么必须 RL |
 | [14_EVICTION](docs/14_EVICTION.md) | **帧驱逐**：自监督重要性、两种可逆性、真实数据的修正 |
 | [15_RELATED_WORK](docs/15_RELATED_WORK.md) | ⚠️ **相关工作与定位**：SafeLens 已占核心架构，定位需调整 |
+| [16_BOUNDS_ANYTIME](docs/16_BOUNDS_ANYTIME.md) | **风险上界与 anytime 监控**：精确二项胜出、认证可撤销 |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
@@ -85,6 +86,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **judge 能力基准**（真值已知 + 常数基线 + 退化检查） | ✅ |
 | **ACI 在线校准**（含饱和诊断 + DtACI） | ✅ |
 | **可行性下界**（升级率闭式下界 + 认证/成本冲突） | ✅ |
+| **四个风险上界对比**（精确二项在稀缺区间胜出一个数量级） | ✅ |
+| **Anytime-valid 监控**（跨域漂移，认证可撤销） | ✅ |
 | **Ring buffer**（时长+字节双约束 + 重采样） | ✅ |
 | **评测指标**（帕累托 / 优雅退化 / 逐分层 ROC / 成本交叉点） | ✅ |
 | **Analyst 工具集**（7 个工具 + 预算计量） | ✅ |
@@ -114,7 +117,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 409 passed
+make test        # 425 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
