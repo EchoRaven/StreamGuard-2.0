@@ -56,6 +56,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [08_SFT_RL](docs/08_SFT_RL.md) | **SFT 与 RL**：数据构造、GRPO、反奖励钻空子 |
 | [09_POLICY](docs/09_POLICY.md) | **政策语料与 out-of-policy**：SafeWatch 六类、补缺流程、位置偏置 |
 | [10_POLICY_INDUCTION](docs/10_POLICY_INDUCTION.md) | **从标签反推政策定义**：离线编译器、迭代循环、四条对照 |
+| [11_POLICY_TO_TRAINING](docs/11_POLICY_TO_TRAINING.md) | **生成的政策怎么接进训练**：反事实敏感度、六种政策增强 |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
@@ -83,6 +84,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **评测指标**（帕累托 / 优雅退化 / 逐分层 ROC / 成本交叉点） | ✅ |
 | **Analyst 工具集**（7 个工具 + 预算计量） | ✅ |
 | **SafeWatch-Bench 接入**（1400 条 → SG2 格式，0 error） | ✅ |
+| **政策敏感度指标**（反事实翻转，实测基线 1.00） | ✅ |
+| **政策增强**（六种，防 SFT 学成背政策） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
@@ -97,7 +100,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 294 passed
+make test        # 312 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
