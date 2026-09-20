@@ -83,8 +83,8 @@ def evaluate(name: str, frames, corpus: PolicyCorpus, label: str) -> dict:
     n = sum(actions.values())
     peak = sum(torch.cuda.max_memory_allocated(i) / 1024 ** 3
                for i in range(torch.cuda.device_count()))
-    del m
-    torch.cuda.empty_cache()
+    m.release()          # del + empty_cache 不够,分片模型的 accelerate
+    del m                # hook 会留住各卡子模块的引用
     return {"model": name, "policy": label, "n": n, "load_s": round(load_s, 1),
             "peak_gb": round(peak, 2), "lat_s": round(float(np.mean(lat)), 2),
             "valid_rate": round(1 - actions["invalid"] / max(n, 1), 3),

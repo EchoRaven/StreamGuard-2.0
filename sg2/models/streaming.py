@@ -145,6 +145,14 @@ class Qwen3VLStreaming:
             else:
                 raise ValueError(f"未知量化方式 {self.cfg.quantization}")
 
+        # ⚠️ 旧驱动(本机 460.91)上 accelerate/torch 探测 NVLink 拓扑会崩:
+        #   RuntimeError: nvmlDeviceGetNvLinkRemoteDeviceType_ INTERNAL ASSERT FAILED
+        # 2080 Ti 本来就没插 NVLink 桥,直接关掉 P2P 探测。
+        # 实测:不关的话 8B-nf4 会随机中断,而与量化本身无关。
+        import os
+        os.environ.setdefault("NCCL_P2P_DISABLE", "1")
+        os.environ.setdefault("PYTORCH_NVML_BASED_CUDA_CHECK", "0")
+
         if self.cfg.device == "auto":
             # accelerate 按层分片。max_memory 要给每张卡留出激活的余量,
             # 填满权重会在前向时 OOM。
@@ -234,6 +242,39 @@ class Qwen3VLStreaming:
         self.ctx = _ctx_from(self.cfg)
         self._frames.clear()
         self._evidence.clear()
+
+    def release(self) -> None:
+        """释放权重与显存。
+
+        ⚠️ 仅 `del model` + `empty_cache()` **不够**:device_map 分片的模型
+        会在 accelerate 的 hook 里留下对各卡子模块的引用。实测顺序加载
+        分片版再加载 nf4 版,总占用 22.29 GB 而非预期的 5.96 GB ——
+        显存逐次堆积,最终在 NVML 探测处报一个与量化无关的错。
+
+        对比多个 backbone 时必须显式调用(见 scripts/compare_backends.py)。
+        """
+        import gc
+
+        import torch
+        if self._model is not None:
+            for attr in ("_hf_hook", "_hf_peft_config_loaded"):
+                if hasattr(self._model, attr):
+                    try:
+                        delattr(self._model, attr)
+                    except AttributeError:
+                        pass
+            try:
+                from accelerate.hooks import remove_hook_from_submodules
+                remove_hook_from_submodules(self._model)
+            except Exception:                     # noqa: BLE001
+                pass
+            self._model = None
+        self._proc = None
+        self._frames.clear()
+        self._evidence.clear()
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
 
 
 def build_midtier(cfg: MidtierConfig, **kw):
