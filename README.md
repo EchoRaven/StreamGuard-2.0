@@ -60,6 +60,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [12_ROUTING_REALTIME](docs/12_ROUTING_REALTIME.md) | **升级路由与实时可行性**：能力判据、截止期、batching |
 | [13_STREAMING_TRAINING](docs/13_STREAMING_TRAINING.md) | **流式训练的七个难点**：采样器复用、正例稀缺、为什么必须 RL |
 | [14_EVICTION](docs/14_EVICTION.md) | **帧驱逐**：自监督重要性、两种可逆性、真实数据的修正 |
+| [15_RELATED_WORK](docs/15_RELATED_WORK.md) | ⚠️ **相关工作与定位**：SafeLens 已占核心架构，定位需调整 |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
