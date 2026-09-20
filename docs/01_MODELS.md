@@ -86,8 +86,25 @@ Turing 的两个硬限制，影响所有选型：
 | Qwen3-VL-8B | ~17 GB | ❌ | 4-bit nf4 约 6GB 可推理，但 Turing int4 kernel 差 |
 | Qwen3-VL-8B LoRA 训练 | ~24–40 GB | ❌ | **必须外部 GPU** |
 
-**结论**：本机可完成 M1–M4 的全部工作（sentinel 训练、预实验、agent、
-2B 级中间层验证）。只有 M5（8B LoRA）需要申请到卡之后做。
+### 4.1 11GB 单卡放不下 8B —— 但有两条路
+
+磁盘（`/data` 约 78 GB 可用）不是瓶颈，**显存才是**。8B fp16 权重约 17 GB，
+单张 11 GB 卡放不下。两条可行路径：
+
+| 方式 | 显存 | 代价 | 配置 |
+| --- | --- | --- | --- |
+| **4-bit 量化（nf4）** | ~6 GB，单卡 | Turing 的 int4 kernel 一般，吞吐会掉 | `quantization="nf4"` |
+| **多卡分片** | 17 GB 摊到 4×11 GB | 层间通信走 PCIe（无 NVLink） | `device="auto"` + `max_memory_per_gpu` |
+
+⚠️ `max_memory_per_gpu` 要给每张卡**留出激活的余量**。按权重填满会在前向时 OOM。
+本机 11 GB 卡建议设 `"9GiB"`。
+
+⚠️ `device="auto"` 时不能再用 `cfg.device` 搬输入张量——"auto" 不是设备名。
+代码里取 `model.device`（第一层所在的卡）。
+
+**结论**：本机可完成 M1–M4 的全部工作，并可用 nf4 或分片**实际运行 8B 推理**。
+只有 M5（8B LoRA **训练**）仍需 ≥40 GB 卡——训练要存优化器状态和激活，
+比推理多一个数量级。
 
 ## 5. 权重获取
 

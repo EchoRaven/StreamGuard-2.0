@@ -202,13 +202,21 @@ class PromptConfig:
 
 @dataclass
 class MidtierConfig:
-    """中间层流式 VLM。"""
+    """中间层流式 VLM。
+
+    单卡放不下时两条路(本机 4x11GB 实测都可行):
+      quantization="nf4"  —— 8B 压到约 6GB,单卡即可,但 Turing 的 int4
+                             kernel 支持一般,吞吐会掉
+      device="auto"       —— accelerate 按层分片到多卡,保持 fp16 精度
+    """
     name: str = "qwen3vl"
     model_id: str = "Qwen/Qwen3-VL-8B-Instruct"
     dtype: str = "bfloat16"
     attn_impl: str = "flash_attn"
     max_length: int = 8192
-    device: str = "cuda:0"
+    device: str = "cuda:0"          # "auto" -> 按 max_memory 分片到多卡
+    quantization: str | None = None  # None | "nf4" | "int8"
+    max_memory_per_gpu: str | None = None  # 如 "10GiB";device="auto" 时生效
     lora: LoraConfig = field(default_factory=LoraConfig)
     context: StreamContextConfig = field(default_factory=StreamContextConfig)
     prompt: PromptConfig = field(default_factory=PromptConfig)

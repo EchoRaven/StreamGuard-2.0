@@ -129,10 +129,37 @@ class Qwen3VLStreaming:
         except ImportError:
             from transformers import AutoModelForVision2Seq as Cls
         self._proc = AutoProcessor.from_pretrained(self.cfg.model_id)
-        self._model = Cls.from_pretrained(
-            self.cfg.model_id, torch_dtype=dtype,
-            attn_implementation=self.cfg.attn_impl,
-        ).to(self.cfg.device).eval()
+
+        kw: dict = {"torch_dtype": dtype,
+                    "attn_implementation": self.cfg.attn_impl}
+
+        if self.cfg.quantization:
+            from transformers import BitsAndBytesConfig
+            if self.cfg.quantization == "nf4":
+                kw["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=dtype,
+                    bnb_4bit_use_double_quant=True)
+            elif self.cfg.quantization == "int8":
+                kw["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            else:
+                raise ValueError(f"未知量化方式 {self.cfg.quantization}")
+
+        if self.cfg.device == "auto":
+            # accelerate 按层分片。max_memory 要给每张卡留出激活的余量,
+            # 填满权重会在前向时 OOM。
+            kw["device_map"] = "auto"
+            if self.cfg.max_memory_per_gpu:
+                n = torch.cuda.device_count()
+                kw["max_memory"] = {i: self.cfg.max_memory_per_gpu
+                                    for i in range(n)}
+            self._model = Cls.from_pretrained(self.cfg.model_id, **kw).eval()
+        elif self.cfg.quantization:
+            kw["device_map"] = {"": self.cfg.device}
+            self._model = Cls.from_pretrained(self.cfg.model_id, **kw).eval()
+        else:
+            self._model = Cls.from_pretrained(
+                self.cfg.model_id, **kw).to(self.cfg.device).eval()
 
     # ---------- 协议 ----------
 
@@ -184,7 +211,9 @@ class Qwen3VLStreaming:
         text = self._proc.apply_chat_template(
             msgs, tokenize=False, add_generation_prompt=True)
         inputs = self._proc(text=[text], images=imgs, return_tensors="pt")
-        inputs = {k: v.to(self.cfg.device) for k, v in inputs.items()}
+        # 分片时输入要送到**第一层所在的卡**,不能用 cfg.device("auto" 不是设备名)
+        dev = getattr(self._model, "device", None) or self.cfg.device
+        inputs = {k: v.to(dev) for k, v in inputs.items()}
 
         with torch.no_grad():
             out = self._model.generate(**inputs, max_new_tokens=160,
