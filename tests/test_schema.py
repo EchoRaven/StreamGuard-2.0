@@ -105,3 +105,58 @@ def test_calibration_sample_size_uses_exact_binomial():
     recs = list(load(CLEAN, pool=ALL_POOLS))
     out = V.check_calibration_sample_size(recs)
     assert out and "45" in str(out[0])
+
+
+# ==================== 标注粒度 ====================
+
+def test_video_level_without_events_is_allowed():
+    """SafeWatch-Bench 实测 1400 条全无时间戳,必须能表达这种数据。"""
+    r = json.loads(CLEAN.read_text().splitlines()[1])
+    r["label"] = {"safe": False, "categories": ["C1_sexual"], "events": []}
+    r["granularity"] = "video_level"
+    r["splice"] = None
+    r["source"]["kind"] = "native"
+    rec = ClipRecord.from_json(r)
+    assert not rec.has_nu, "视频级标注不该被计入延迟统计"
+
+
+def test_temporal_without_events_is_still_refused():
+    """默认粒度下仍要拦 —— 否则真正缺 ν 的数据会混进延迟统计。"""
+    r = json.loads(CLEAN.read_text().splitlines()[1])
+    r["label"] = {"safe": False, "categories": ["C1_sexual"], "events": []}
+    with pytest.raises(ValueError, match="ν|video_level"):
+        ClipRecord.from_json(r)
+
+
+def test_video_level_with_events_is_refused():
+    """有 ν 就该标 temporal,不能自相矛盾。"""
+    r = json.loads(CLEAN.read_text().splitlines()[1])
+    r["granularity"] = "video_level"
+    if not r["label"]["events"]:
+        r["label"] = {"safe": False, "categories": ["C1_sexual"], "events": [{
+            "event_id": "e0", "category": "C1_sexual", "t_start_s": 1.0,
+            "t_end_s": 2.0, "frame_start": 30, "frame_end": 60,
+            "severity": "high", "evidence_modality": ["pixel"]}]}
+    with pytest.raises(ValueError, match="video_level"):
+        ClipRecord.from_json(r)
+
+
+def test_has_nu_requires_both_temporal_and_events():
+    recs = list(load(CLEAN, pool=ALL_POOLS))
+    unsafe = [r for r in recs if not r.is_safe]
+    assert unsafe and all(r.has_nu for r in unsafe)
+
+
+def test_json_schema_and_dataclass_agree_on_fields():
+    """两处定义必须一致 —— 加字段时最容易只改一边。
+
+    回归:加 granularity 时只改了 dataclass,120 条样例全部不合 schema。
+    """
+    import json as _j
+    from dataclasses import fields as _f
+    from pathlib import Path as _P
+    schema = _j.loads((_P(__file__).resolve().parents[1]
+                       / "spec/manifest.schema.json").read_text())
+    declared = set(schema["properties"])
+    actual = {f.name for f in _f(ClipRecord)}
+    assert actual <= declared, f"dataclass 有而 schema 没有: {actual - declared}"

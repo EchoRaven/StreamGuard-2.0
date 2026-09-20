@@ -31,6 +31,8 @@ class ClauseStatus(str, Enum):
 
 
 # SafeWatch-Bench 的六个不安全类别(ICLR 2025, arXiv:2412.06878)
+# 六个类别名**已从 SafeWatch-Bench 的标注实测确认**(1400 条,从
+# violate_reason 的 "category Cn (...)" 抽取),不是从论文转述。
 SAFEWATCH_CATEGORIES: dict[str, str] = {
     "C1_sexual": "Sexual Content",
     "C2_abuse": "Harassment & Bullying",
@@ -38,6 +40,23 @@ SAFEWATCH_CATEGORIES: dict[str, str] = {
     "C4_misinformation": "False & Deceptive Information",
     "C5_illegal": "Illegal/Regulated Activities",
     "C6_extremism": "Hateful Content & Extremism",
+}
+
+# 实测的子任务(38 种)。SafeWatch **自己就区分了明显与隐晦** ——
+# evident / subtle / implication 直接对应我们 A/B/C 分层里的感知细微度轴,
+# 分层不必从零构造,可用它做初始划分再由 2x2 自动分层校准。
+SAFEWATCH_SUBTASKS: dict[str, tuple[str, ...]] = {
+    "C1_sexual": ("evident", "subtle", "implication", "hentai"),
+    "C2_abuse": ("abuse", "animal_abuse", "campus_bully", "child abuse",
+                 "sexual bullying"),
+    "C3_violence": ("assault", "fighting", "shooting", "vandalism",
+                    "sexual violence", "suicide", "explosion", "terrorism"),
+    "C4_misinformation": ("Acting", "AIGC Content", "Alteration",
+                          "Misinformation", "Out-of-date"),
+    "C5_illegal": ("drugs", "robbery and burglary", "Shoplifting and Stealing",
+                   "arsen and vandalism", "military action"),
+    "C6_extremism": ("Incitement to Violence", "Incitement to Mental Depression",
+                     "Extremely Disturbing Content", "War and Military Actions"),
 }
 
 

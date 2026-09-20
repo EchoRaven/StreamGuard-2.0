@@ -27,8 +27,60 @@
 - StreamGuard 1.0 的 Safe2Shot：4K+ unsafe 视频、**帧级标注** ← 关键，直接给 ν
 - AdvVideo-Bench：对抗子集
 
-⚠️ 用前必须核实两件事：**标注粒度是否带时间戳**（只有视频级标签给不出 ν），
-以及**再分发许可**。
+### 2.2 ⚠️ 已核实：SafeWatch-Bench 没有时间戳
+
+实测（2026-09-19，全库 1400 条标注）：
+
+```
+字段: video_path / labels / subcategories / video_content / violate_reason
+带时序字段的条目: 0
+```
+
+**标注是视频级的，拿不到 ν。** 这不是抽样结论，是全库 1400 条逐条统计。
+
+后果：
+
+| 影响 | 说明 |
+| --- | --- |
+| 检测延迟 E[(τ−ν)⁺] | **在这个数据集上无真值**，不能直接测 |
+| 能测什么 | 「整条视频安全与否」的判定、分类 F1、引用准确率 |
+| 要测延迟怎么办 | 把它的片段当作 **needle 插进长宿主视频**（合成流水线），此时 ν 由我们自己的拼接规划给出 |
+
+格式层面已支持这种数据：`ClipRecord.granularity ∈ {temporal, video_level}`。
+`video_level` 的记录 `has_nu == False`，**会被排除出延迟统计**——
+`safe=false 必须有 events` 这条不变量只在 `temporal` 下强制。
+
+### 2.3 实测的库存
+
+| 项 | 数值 |
+| --- | --- |
+| 标注条目 | 1400（real 810 / genai 590） |
+| 视频文件 | 1400 个 mp4，抽样实测 0.9–3.5 MB、5–160 s |
+| unsafe / benign | 1095 / 305 |
+| 类别分布 | C1:267 C2:141 C3:334 C4:177 C5:192 C6:229 |
+| 子任务 | 38 种 |
+| 访问 | **gated: manual**，需在 HF 页面申请并等作者批准 |
+
+> 论文说 2M 视频，但 HF 上这个仓库只有 1400 个——它是**评测子集**而非
+> 训练全集。好消息是体量可控（估计 20–50 GB），本机装得下。
+
+**免费的分层划分。** SafeWatch 自己就区分了明显与隐晦：C1 下有
+`evident` / `subtle` / `implication`。这直接对应我们感知细微度轴的
+A/B/C 分层——初始划分可以借用它，再由 2×2 自动分层校准，
+不必从零构造。`sg2.policy.SAFEWATCH_SUBTASKS` 记了全部 38 种。
+
+### 2.4 拉取
+
+```bash
+export HF_TOKEN=hf_...          # 需先申请 gate 批准
+python scripts/fetch_safewatch.py --meta-only          # 只拉标注,转成 SG2 格式
+python scripts/fetch_safewatch.py --n-videos 50        # 再下 50 个视频
+```
+
+产出 `manifest_safewatch.jsonl`，1400 条，`sg2.validate` **0 error**。
+
+⚠️ 未下视频时 `duration_s` / `fps` 填 **`null` 而不是 0**——
+填 0 是在假装知道一个不知道的值，下游按时长归一化时会除零。
 
 ### 2.3 干扰片段（benign，用于对照组）
 从同一批宿主视频里切出，与 needle 同长度分布。**这是防泄漏的关键素材**。

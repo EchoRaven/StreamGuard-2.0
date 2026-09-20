@@ -15,6 +15,10 @@ SPEC_VERSION = "1.0"
 Modality = Literal["pixel", "speech", "ocr", "motion", "composition"]
 Pool = Literal["exemplar", "compile", "calibration", "eval"]
 Split = Literal["train", "calib", "test", "zeroday_holdout"]
+# 标注粒度。**不是可选的元信息** —— 它决定这条记录能不能进检测延迟的
+# 统计。SafeWatch-Bench 实测 1400 条全是 video_level(带时序字段的 0 条),
+# 只能用于"整条视频安全与否",不能用于流式定位。
+Granularity = Literal["temporal", "video_level"]
 MetaCondition = Literal["aligned", "fp_bait", "camouflage"]
 
 
@@ -85,6 +89,7 @@ class ClipRecord:
     splice: Splice | None
     split: Split
     pool: Pool
+    granularity: Granularity = "temporal"
 
     @property
     def events(self) -> list[Event]:
@@ -96,15 +101,31 @@ class ClipRecord:
         return bool(self.label.get("safe", False))
 
     @property
+    def has_nu(self) -> bool:
+        """是否有变点真值。**算检测延迟前必须先问这个。**
+
+        视频级标注的数据(如 SafeWatch-Bench)拿不到 ν,把它算进
+        E[(τ−ν)⁺] 会得到一个没有意义的数。
+        """
+        return self.granularity == "temporal" and bool(self.label.get("events"))
+
+    @property
     def needle_total_s(self) -> float:
         return sum(e.duration_s for e in self.events)
 
     def __post_init__(self):
         if self.is_safe and self.label.get("events"):
             raise ValueError(f"{self.id}: safe=true 但有 events")
-        if not self.is_safe and not self.label.get("events"):
+        if (not self.is_safe and not self.label.get("events")
+                and self.granularity == "temporal"):
             raise ValueError(
-                f"{self.id}: safe=false 但没有 events —— 没有 ν 就测不了检测延迟")
+                f"{self.id}: safe=false 但没有 events —— 没有 ν 就测不了"
+                "检测延迟。若数据本身就只有视频级标注,请显式设 "
+                'granularity="video_level"(它会被排除出延迟统计)')
+        if self.granularity == "video_level" and self.label.get("events"):
+            raise ValueError(
+                f"{self.id}: granularity=video_level 却带 events —— "
+                "有 ν 就该标成 temporal")
         if self.source.get("kind") == "native" and self.splice is not None:
             raise ValueError(f"{self.id}: native 来源不应有 splice")
         cond = self.metadata_adversarial.get("condition")

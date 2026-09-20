@@ -278,3 +278,17 @@ def test_id_prefix_leak_resolves_to_real_clause():
     c = safewatch_corpus()
     cl, why = c.resolve_citation(normalize_citation("id=C3_violence"))
     assert cl is not None and cl.id == "C3_violence" and why == "exact"
+
+
+# ==================== SafeWatch 实测事实 ====================
+
+def test_subtasks_cover_all_six_categories():
+    from sg2.policy import SAFEWATCH_SUBTASKS
+    assert set(SAFEWATCH_SUBTASKS) == set(SAFEWATCH_CATEGORIES)
+
+
+def test_subtlety_subtasks_exist_for_c1():
+    """SafeWatch 自己就区分明显与隐晦 —— A/B/C 分层可借用。"""
+    from sg2.policy import SAFEWATCH_SUBTASKS
+    c1 = SAFEWATCH_SUBTASKS["C1_sexual"]
+    assert "evident" in c1 and "subtle" in c1 and "implication" in c1
