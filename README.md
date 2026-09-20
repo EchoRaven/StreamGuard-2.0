@@ -71,6 +71,13 @@ calibration machinery. The research argument lives in a separate proposal docume
 | RL 奖励 + 五条反钻空子 | ✅ |
 | 配置系统（嵌套 dataclass + YAML + 硬件校验） | ✅ |
 | 组件注册表（按名字换实现） | ✅ |
+| **Prompt 模板系统**（四段可配 + 指纹化缓存键） | ✅ |
+| 动作协议解析（严格，不修补） | ✅ |
+| 端到端 Pipeline 编排 | ✅ |
+| **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
+| **Qwen3-VL-2B 流式后端** | ✅ 真实模型跑通：4.0 GB，1.2 s/tick |
+| Agent / 中间层实际训练 | ⬜ 待 ≥40 GB 卡 |
+| 组件注册表（按名字换实现） | ✅ |
 | 编码器 / Sentinel / CUSUM 控制器 | ✅ 含 mock，无 GPU 可跑 |
 | Agent / 中间层实际训练 | ⬜ 待 GPU |
 
@@ -78,7 +85,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        #  passed
+make test        # 172 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

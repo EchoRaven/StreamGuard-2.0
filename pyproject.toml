@@ -29,7 +29,7 @@ sg2 = ["../spec/*.json", "../spec/taxonomy/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-ra"
 markers = ["slow: 需要 ffmpeg 渲染视频的端到端测试"]
 
 [tool.ruff]
