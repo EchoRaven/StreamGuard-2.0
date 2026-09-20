@@ -16,11 +16,16 @@ from dataclasses import dataclass
 class SafeLensReported:
     """SafeLens, arXiv 2605.17610 (2026-05)。
 
-    架构:两级级联,**两级用同一个微调后的 Qwen3-VL-2B**。
-      S1 = Rolling Attention Probe,读 VLM 隐层 P_φ: R^(n×d) -> Δ^p,
-           外加 Florence-2-Large 逐帧 caption c_t = C(f_t);
-           置信度 = max 概率,≥ τ 则直接出判决。
-      S2 = 同一模型,prompt 拼成 X̃ = [X; c_i; q_i] 后做结构化 CoT。
+    架构:两级级联,**两级用同一个微调后的 Qwen3-VL-2B**(Algorithm 2)。
+      S1 = Rolling Attention Probe,读 VLM **最终层**隐状态
+           P_φ: R^(n×d) -> Δ^p;置信度 = max 概率,≥ τ 直接出判决。
+           ⚠️ **S1 不含 caption** —— caption 只在 S2 分支生成(Alg.2 第 10 行)。
+           这就是 0.04s 只是一次探针前向的原因。
+      S2 = T 次 Florence-2 caption + prompt 拼成 X̃ = [X; c; q]
+           + **第二次全视频前向**做结构化 CoT。开销随视频长度增长。
+    训练:三步串行 —— TracIn 筛数据 -> 微调 VLM -> **冻结骨干单独训探针**。
+         探针约 1.6 万参数(占 2B 的 0.0008%),一次微调同时产出两级。
+         ⚠️ 原文**未公布任何训练超参**(优化器/LR/epoch/batch/LoRA)。
     数据:SafeWatch 2M 经 TracIn 影响函数筛到 48K(2.4%),
          CoT 轨迹由 Qwen3.5-27B 生成。消融里**数据筛选贡献 +3.8%**,
          大于任何架构选择 —— 记下来,因为它卖的是架构。
