@@ -98,6 +98,11 @@ def parse_step(text: str, *, tokens: int = 0) -> StreamStep:
         evidence_frames=tuple(int(f) for f in frames
                               if isinstance(f, (int, float))),
         confidence=d.get("confidence"),
+        # ⚠️ uncovered 专用的两个字段。漏解析的话缺口追踪会把所有案例
+        # 归到 "<未分类>",于是永远聚不出一个可行动的缺口 —— 而 StreamStep
+        # 里明明有这两个字段,静默丢失。
+        description=d.get("description"),
+        suggested_category=d.get("suggested_category"),
         tokens=tokens)
     # flag 必须带引用 —— 契约见 docs/07 §3.2
     if step.action == "flag" and not step.policy_citation:
