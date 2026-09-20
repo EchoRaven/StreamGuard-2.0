@@ -120,6 +120,36 @@ class SigLIP2Encoder:
         return _l2(np.concatenate(outs, axis=0))
 
 
+    # ---------- 文本塔 ----------
+
+    def encode_text(self, texts: list[str]) -> np.ndarray:
+        """编码文本提示,用于**零样本**判定。
+
+        ⚠️ 冻结的 SigLIP 输出的是 1152 维向量,**不是判决**。要得到
+        "安全与否"必须在它之上再加一层:
+            零样本   —— 用本方法编码提示,比图文余弦(不需标注)
+            原型/kNN —— 需要带标注的正例
+            线性探针 —— 需要训练
+        三者都需要标注或提示工程,"冻结 SigLIP 自己判"是不存在的。
+        """
+        import torch
+        self._lazy()
+        inputs = self._proc(text=texts, padding="max_length",
+                            truncation=True, return_tensors="pt")
+        inputs = {k: v.to(self.cfg.device) for k, v in inputs.items()}
+        with torch.no_grad():
+            feat = self._model.get_text_features(**inputs)
+        if not isinstance(feat, torch.Tensor):
+            feat = getattr(feat, "pooler_output", None)
+            if feat is None:
+                raise RuntimeError("get_text_features 未返回张量")
+        return _l2(feat.float().cpu().numpy())
+
+    def zero_shot(self, frames: np.ndarray, prompts: list[str]) -> np.ndarray:
+        """零样本打分:(N 帧, M 提示) 的相似度矩阵。"""
+        return self.encode(frames) @ self.encode_text(prompts).T
+
+
 def build_encoder(cfg: EncoderConfig):
     from ..registry import build
     return build("encoder", cfg.name, cfg)

@@ -58,6 +58,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [10_POLICY_INDUCTION](docs/10_POLICY_INDUCTION.md) | **从标签反推政策定义**：离线编译器、迭代循环、四条对照 |
 | [11_POLICY_TO_TRAINING](docs/11_POLICY_TO_TRAINING.md) | **生成的政策怎么接进训练**：反事实敏感度、六种政策增强 |
 | [12_ROUTING_REALTIME](docs/12_ROUTING_REALTIME.md) | **升级路由与实时可行性**：能力判据、截止期、batching |
+| [13_STREAMING_TRAINING](docs/13_STREAMING_TRAINING.md) | **流式训练的七个难点**：采样器复用、正例稀缺、为什么必须 RL |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
@@ -93,6 +94,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **能力路由**（低级处理不了才上送，非风险驱动） | ✅ |
 | **实时可行性**（截止期/余量/单卡流数，独立于成本） | ✅ |
 | **吞吐基准**（batching 实测，10 倍差距） | ✅ |
+| **流式训练模拟器**（复用运行时采样器） | ✅ |
+| **SigLIP 文本塔**（零样本，唯一真 training-free 的路径） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
@@ -107,7 +110,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 353 passed
+make test        # 370 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
@@ -121,7 +124,7 @@ make doctor      # 环境自检：驱动/torch/显存/配置/磁盘
 
 | 层 | 决定 |
 |---|---|
-| Sentinel | SigLIP 2 so400m，冻结，逐帧 + 压缩域/ASR/OCR/弹幕多通道融合 |
+| Sentinel | SigLIP 2 so400m，冻结，逐帧（**只出 embedding，判决靠上层**）+ 压缩域/ASR/OCR/弹幕多通道融合 |
 | 中间层 | Qwen3-VL-8B-Instruct（Apache 2.0），备选 InternVL3.5-8B |
 | Analyst | Frontier API，接口层统一，换 backbone 即实验 |
 | 训练框架 | ms-swift |

@@ -190,3 +190,16 @@ def test_rewind_empty_outside_window():
     for i in range(50):
         b.append(i * 0.1, _img())
     assert b.rewind(0.0, 0.5) == []
+
+
+def test_resample_never_repeats_a_frame():
+    """回归:目标帧率高于原生帧率时,同一帧会被**非相邻地**重复取到。
+    原实现只查 out[-1],漏掉这种情况 —— 实测 burst 4fps 对 0.5fps 的流,
+    某一帧被取了两次,窗口里出现重复时间戳。
+    """
+    b = RingBuffer(window_s=100.0)
+    for i in range(10):
+        b.append(i * 2.0, _img())          # 0.5 fps 原生
+    got = b.resample(0.0, 18.0, fps=4.0)   # 目标远高于原生
+    ts = [f.t_s for f in got]
+    assert len(ts) == len(set(ts)), f"出现重复时间戳: {ts}"

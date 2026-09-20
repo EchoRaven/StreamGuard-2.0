@@ -32,7 +32,7 @@
 
 | 项 | 决定 | 理由 |
 |---|---|---|
-| Sentinel 视觉编码器 | **SigLIP 2 so400m，冻结，逐帧** | 冻结线性探针最强；逐帧正是 needle 检测要的粒度 |
+| Sentinel 视觉编码器 | **SigLIP 2 so400m，冻结，逐帧**（只出 embedding，**判决靠上层**） | 冻结线性探针最强；逐帧正是 needle 检测要的粒度 |
 | Sentinel 融合头 | ~2M 参数 MLP，可训 | §4.5 允许；分钟级重训 |
 | 时序通道（C 类） | InternVideo2 clip 编码器，可选 | SigLIP2 逐帧平均对时序组合无效 |
 | 中间层 | **Qwen3-VL-8B-Instruct**（Apache 2.0） | 2026 开源全能默认；8B 对应 1.0 的角色 |

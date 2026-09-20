@@ -91,11 +91,16 @@ class RingBuffer:
         win = self.rewind(t0_s, t1_s)
         if not win:
             return []
-        out, step = [], 1.0 / fps
+        # ⚠️ 用 id 去重而非只比相邻 —— 原实现只查 out[-1],
+        # 目标帧率高于原生帧率时同一帧会被**非相邻地**重复取到,
+        # 于是窗口里出现重复时间戳。实测 burst 4fps 对 0.5fps 的流,
+        # 71.33s 被取了两次。
+        out, seen, step = [], set(), 1.0 / fps
         t = t0_s
         while t <= t1_s + 1e-9:
             nearest = min(win, key=lambda f: abs(f.t_s - t))
-            if not out or out[-1] is not nearest:
+            if id(nearest) not in seen:
+                seen.add(id(nearest))
                 out.append(nearest)
             t += step
         return out
