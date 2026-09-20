@@ -74,6 +74,9 @@ class ChannelConfig:
     asr: bool = False                     # 需 faster-whisper
     ocr: bool = False                     # 需 rapidocr
     chat: bool = False                    # 仅直播有
+    # rolling attention probe(SafeLens S1 的机制,见 sg2/probe.py)。
+    # ⚠️ 默认关:它需要一个**已训练**的探针对象,没有就该报错而不是静默跳过。
+    rolling_probe: bool = False
 
 
 @dataclass
@@ -85,12 +88,20 @@ class SentinelConfig:
     fusion_ckpt: str | None = None
     dedup_embedding_delta: float = 0.02   # 感知去重阈值
     max_decode_fps_multiplier: float = 3.0  # 成本放大攻击的硬上限
+    probe_window: int = 10                # rolling 窗宽(单位:tick,不是秒)
 
     def __post_init__(self):
         if self.sample_fps <= 0:
             raise ValueError("sample_fps 必须为正")
         if not any(asdict(self.channels).values()):
             raise ValueError("至少要启用一个通道")
+        if self.probe_window < 1:
+            raise ValueError("probe_window 必须 >= 1")
+        if self.channels.rolling_probe and not self.channels.vision:
+            # 探针吃的是视觉编码器的嵌入,vision 关掉它就没有输入
+            raise ValueError(
+                "channels.rolling_probe 需要 channels.vision 开启 —— "
+                "探针读的是视觉编码器的嵌入")
 
 
 @dataclass

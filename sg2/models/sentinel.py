@@ -28,12 +28,21 @@ class MultiChannelSentinel:
     """
 
     def __init__(self, cfg: SentinelConfig | None = None, *,
-                 encoder=None, fusion=None, prototype: np.ndarray | None = None):
+                 encoder=None, fusion=None, prototype: np.ndarray | None = None,
+                 probe=None):
         self.cfg = cfg or SentinelConfig()
         self.encoder = encoder or build("encoder", self.cfg.encoder.name,
                                         self.cfg.encoder)
         self.fusion = fusion
         self._proto = prototype
+        # rolling attention probe 通道。⚠️ 开了通道却没给探针要**报错**:
+        # 静默少一路通道,融合头的输入维度会悄悄变,分数不可比。
+        if self.cfg.channels.rolling_probe and probe is None:
+            raise ValueError(
+                "channels.rolling_probe=True 但没有传 probe= —— "
+                "需要一个已训练的 RollingAttentionProbe。"
+                "不想用就把通道关掉,不要靠静默跳过。")
+        self._probe = probe
         self.reset()
 
     def reset(self) -> None:
@@ -43,6 +52,10 @@ class MultiChannelSentinel:
         self._skipped = 0
         self._window_start_s: float | None = None
         self._window_decoded = 0
+        # 每条流一个独立的在线探针状态 —— 跨流复用会串味
+        self._online_probe = (self._probe.online()
+                              if getattr(self, "_probe", None) is not None
+                              else None)
 
     # ---------- 通道 ----------
 
@@ -166,6 +179,13 @@ class MultiChannelSentinel:
             if getattr(self.cfg.channels, flag):
                 ch[key] = self._text_score(text)
 
+        if self.cfg.channels.rolling_probe and self._online_probe is not None:
+            # ⚠️ 去重命中时喂的是**复用的上一帧嵌入**,不是跳过。
+            # 跳过会让窗口代表的时间跨度随内容变化 —— 同样是 10 个槽位,
+            # 静态画面下可能横跨几分钟。宁可喂重复帧,让窗宽保持 tick 语义。
+            if self._last_emb is not None:
+                ch["probe"] = self._online_probe.update(self._last_emb)
+
         if self.fusion is not None:
             vec = np.array([[ch.get(k, 0.0) for k in sorted(ch)]])
             score = float(self.fusion.score(vec)[0])
@@ -179,8 +199,11 @@ class MultiChannelSentinel:
     @property
     def stats(self) -> dict:
         tot = self._decoded + self._skipped
-        return {"decoded": self._decoded, "skipped": self._skipped,
-                "dedup_rate": self._skipped / tot if tot else 0.0}
+        out = {"decoded": self._decoded, "skipped": self._skipped,
+               "dedup_rate": self._skipped / tot if tot else 0.0}
+        if self._online_probe is not None:
+            out["probe"] = self._online_probe.stats
+        return out
 
 
 def build_sentinel(cfg: SentinelConfig, **kw):

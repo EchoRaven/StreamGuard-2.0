@@ -62,6 +62,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [14_EVICTION](docs/14_EVICTION.md) | **帧驱逐**：自监督重要性、两种可逆性、真实数据的修正 |
 | [15_RELATED_WORK](docs/15_RELATED_WORK.md) | **相关工作与定位**：SafeLens 拆解 + 从其运行时反推出 34.3% 升级率 |
 | [16_BOUNDS_ANYTIME](docs/16_BOUNDS_ANYTIME.md) | **风险上界与 anytime 监控**：精确二项胜出、认证可撤销 |
+| [17_PROBE](docs/17_PROBE.md) | **rolling attention probe**：温度必须可学；实测注意力不贡献，增益全来自开窗取 max |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
@@ -104,6 +105,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **帧驱逐**（5 种策略 + 自监督重要性，零人工标注） | ✅ |
 | **SigLIP 文本塔**（零样本，唯一真 training-free 的路径） | ✅ |
 | **SafeLens 基线反推**（34.3% 升级率，原文未给；10 条测试钉住） | ✅ |
+| **Rolling attention probe**（2306 参数 + 在线版 + 退化诊断） | ✅ 真实嵌入实测 |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
@@ -118,12 +120,13 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 435 passed
+make test        # 455 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计
 make doctor      # 环境自检：驱动/torch/显存/配置/磁盘
 python scripts/safelens_baseline.py   # SafeLens 基线：反推升级率 + 流式可行性
+python scripts/probe_pooling_bench.py --videos-dir <真实视频>  # 三种池化对比
 ```
 
 `make synth` 用 ffmpeg 的 lavfi 自己生成素材，所以**无需任何真实数据**
