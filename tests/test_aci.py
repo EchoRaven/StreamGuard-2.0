@@ -158,3 +158,89 @@ def test_audit_cost_rejects_bad_rates():
 def test_bad_config_is_refused(kw):
     with pytest.raises(ValueError):
         AdaptiveConformal(**kw)
+
+
+# ==================== 可行性下界(Kotte 2026 Prop.3) ====================
+
+def test_floor_is_zero_when_base_risk_below_target():
+    """mu <= alpha 时不需要强制升级。"""
+    from sg2.aci import abstention_floor
+    assert abstention_floor(0.02, 0.05) == 0.0
+    assert abstention_floor(0.05, 0.05) == 0.0
+
+
+def test_floor_grows_with_base_risk():
+    from sg2.aci import abstention_floor
+    f = [abstention_floor(m, 0.05) for m in (0.1, 0.2, 0.4, 0.6)]
+    assert f == sorted(f) and f[0] > 0
+
+
+def test_floor_matches_closed_form():
+    """(mu - alpha) / (M - alpha),M=1 时的保守形式。"""
+    from sg2.aci import abstention_floor
+    assert abstention_floor(0.20, 0.05) == pytest.approx(0.15 / 0.95)
+
+
+def test_sharpened_floor_is_tighter_only_when_M_below_one():
+    from sg2.aci import abstention_floor
+    assert abstention_floor(0.2, 0.05, M=0.5) > abstention_floor(0.2, 0.05)
+
+
+def test_floor_rejects_bad_params():
+    from sg2.aci import abstention_floor
+    for kw in ({"mu": 0.2, "alpha": 1.5}, {"mu": 1.5, "alpha": 0.05},
+               {"mu": 0.2, "alpha": 0.05, "M": 0.01}):
+        with pytest.raises(ValueError):
+            abstention_floor(**kw)
+
+
+# ==================== 认证与成本的冲突 ====================
+
+def test_certification_and_cost_can_conflict():
+    """**两个约束从两头夹升级率。** 下界>上界时不可兼得。
+
+    实测:real 分辨率 r*=2.53%,廉价层漏报率超过约 7% 就冲突。
+    """
+    from sg2.aci import certified_cost_conflict
+    ok = certified_cost_conflict(0.05, 0.05, 0.0253)
+    bad = certified_cost_conflict(0.30, 0.05, 0.0253)
+    assert ok["both_achievable"] and not bad["both_achievable"]
+
+
+def test_conflict_window_shrinks_as_base_risk_rises():
+    from sg2.aci import certified_cost_conflict
+    w = [certified_cost_conflict(m, 0.05, 0.0253)["window"]
+         for m in (0.03, 0.07, 0.15)]
+    assert w == sorted(w, reverse=True)
+
+
+def test_feasibility_check_respects_budget():
+    from sg2.aci import is_certifiable
+    assert is_certifiable(0.10, 0.05, max_escalation=0.20)["feasible"]
+    assert not is_certifiable(0.10, 0.05, max_escalation=0.02)["feasible"]
+
+
+# ==================== ACI 的适用边界 ====================
+
+def test_aci_helps_under_temporal_drift_not_cross_dataset():
+    """Prop.8:ACI 是 **emit-only feedback**,其失败是反馈模型的性质,
+    不是步长调不好。正面保证需要 full feedback —— 即被弃权样本上的标签,
+    在我们这里就是**随机审计采样**。
+    """
+    from sg2.aci import aci_applicable
+    assert aci_applicable("temporal_drift")
+    assert aci_applicable("gradual_degradation")
+    assert not aci_applicable("cross_dataset")
+
+
+def test_unknown_regime_is_refused():
+    from sg2.aci import aci_applicable
+    with pytest.raises(ValueError, match="未知漂移类型"):
+        aci_applicable("nope")
+
+
+def test_audit_is_a_precondition_not_an_optimisation():
+    """审计率为 0 时 ACI 拿不到任何 full-feedback 信号。"""
+    from sg2.aci import audit_signal_cost
+    with pytest.raises(ValueError):
+        audit_signal_cost(0.0, 0.05)

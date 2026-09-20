@@ -84,6 +84,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **政策归纳**（从 k 条标签反推定义 + 迭代循环） | ✅ |
 | **judge 能力基准**（真值已知 + 常数基线 + 退化检查） | ✅ |
 | **ACI 在线校准**（含饱和诊断 + DtACI） | ✅ |
+| **可行性下界**（升级率闭式下界 + 认证/成本冲突） | ✅ |
 | **Ring buffer**（时长+字节双约束 + 重采样） | ✅ |
 | **评测指标**（帕累托 / 优雅退化 / 逐分层 ROC / 成本交叉点） | ✅ |
 | **Analyst 工具集**（7 个工具 + 预算计量） | ✅ |
@@ -113,7 +114,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 398 passed
+make test        # 409 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

@@ -233,3 +233,101 @@ def audit_signal_cost(audit_rate: float, miss_rate: float) -> float:
     if not 0 < audit_rate <= 1 or not 0 < miss_rate <= 1:
         raise ValueError("audit_rate 与 miss_rate 必须在 (0,1]")
     return 1.0 / (audit_rate * miss_rate)
+
+
+# ---------------------------------------------------------------- 可行性
+
+def abstention_floor(mu: float, alpha: float, M: float = 1.0) -> float:
+    """任何 distribution-free 方法都逃不掉的**弃权下界**。
+
+        P(abstain) >= (mu - alpha) / (M - alpha)
+
+    出处:Kotte 2026, arXiv:2606.29054, Proposition 3
+    (Sharpened two-sided abstention floor)。
+    mu = 基础风险 E[R], M = ess sup R。
+
+    **在级联里"弃权"就是"升级"** —— 所以这是**升级率的闭式下界**:
+    廉价层的基础漏报率 mu 高于目标 alpha 时,要想拿到保证,
+    至少这么大比例的流量必须上送。**调参救不了不可行。**
+
+    M<1 才比保守的 (mu-alpha)/(1-alpha) 更紧。原文实测 NER/QA/CLS 上
+    审计出的 M 恰好 =1.0(每个格子里都有完全漏掉的样本),
+    所以通常就用 M=1。我们的漏报损失是 0/1,同样 M=1。
+    """
+    if not 0 < alpha < M <= 1:
+        raise ValueError(f"需要 0 < alpha({alpha}) < M({M}) <= 1")
+    if not 0 <= mu <= 1:
+        raise ValueError(f"mu 必须在 [0,1]: {mu}")
+    return max(0.0, (mu - alpha) / (M - alpha))
+
+
+def is_certifiable(mu: float, alpha: float, max_escalation: float,
+                   M: float = 1.0) -> dict:
+    """在给定升级预算下,目标 alpha 能不能被认证。
+
+    ⚠️ 这是**部署前第一步**,先于选哪个界、用哪个分数。
+    原文的三步配方:先查可行性,再选界与分数,最后在目标域重查。
+    """
+    floor = abstention_floor(mu, alpha, M)
+    return {"mu": mu, "alpha": alpha, "floor": round(floor, 4),
+            "budget": max_escalation,
+            "feasible": floor <= max_escalation,
+            "reason": ("基础风险低于目标,无需强制升级" if mu <= alpha
+                       else (f"需升级 >= {floor:.1%},预算 {max_escalation:.1%}"
+                             + ("(够)" if floor <= max_escalation
+                                else " —— **不可行**"))),
+            }
+
+
+def certified_cost_conflict(mu: float, alpha: float, crossover_r: float,
+                            M: float = 1.0) -> dict:
+    """**认证与成本的冲突**:两个约束把升级率从两头夹。
+
+        下界 = (mu - alpha)/(M - alpha)   要保证就至少升这么多
+        上界 = r*(成本交叉点)             要比基线便宜就至多升这么多
+
+    下界 > 上界时,**不可能同时做到"有保证"和"更便宜"** —— 必须放弃一个。
+    这个张力可以闭式算出来,不需要跑任何实验。
+    """
+    floor = abstention_floor(mu, alpha, M)
+    return {"floor": round(floor, 4), "crossover_r": round(crossover_r, 4),
+            "window": round(crossover_r - floor, 4),
+            "both_achievable": floor <= crossover_r,
+            "verdict": ("可同时认证且更便宜" if floor <= crossover_r
+                        else "**认证与省钱不可兼得** —— 要保证就得比基线贵")}
+
+
+# ACI 的适用边界(Kotte 2026 §3.5 实测)
+ACI_REGIMES = {
+    "temporal_drift": {
+        "desc": "流水线随时间漂移(我们的流内漂移)",
+        "static_crc_violation": 0.60, "aci_violation": 0.04,
+        "aci_helps": True},
+    "gradual_degradation": {
+        "desc": "质量逐渐劣化",
+        "static_crc_violation": 0.56, "aci_violation": 0.12,
+        "aci_helps": True},
+    "cross_dataset": {
+        "desc": "换数据集/换政策(我们的零日政策场景)",
+        "static_crc_violation": 14 / 16, "aci_violation": 14 / 16,
+        "aci_helps": False,
+        "note": "mu=0.40-0.84 >> alpha=0.10,是**不可行**区间;"
+                "合规的那几次弃权 75-100%。调参救不了不可行。"},
+}
+
+
+def aci_applicable(regime: str) -> bool:
+    """ACI 在这个漂移类型下管不管用。
+
+    ⚠️ **Proposition 8(emit-only feedback obstruction)**:
+    只在"被放行的样本"上观测风险时,任意保证 anytime emitted-risk
+    的方法都能被构造出违反。**ACI 正是 emit-only**,所以它的失败是
+    反馈模型的性质,不是步长 gamma 调不好。
+
+    正面保证需要 **full feedback** —— 验证器,或**被弃权样本上的标签**。
+    在我们的系统里,那就是**随机审计采样**(docs/04 §4.4)。
+    审计不是可选优化,它是保证成立的**前提**。
+    """
+    if regime not in ACI_REGIMES:
+        raise ValueError(f"未知漂移类型 {regime};可选 {sorted(ACI_REGIMES)}")
+    return ACI_REGIMES[regime]["aci_helps"]
