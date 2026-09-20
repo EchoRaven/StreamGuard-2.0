@@ -13,13 +13,14 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 
-VALID_ACTIONS = ("hold", "flag", "clear")
+VALID_ACTIONS = ("hold", "flag", "clear", "uncovered")
 
 
 class Action(str, Enum):
     HOLD = "hold"
     FLAG = "flag"
     CLEAR = "clear"
+    UNCOVERED = "uncovered"
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,8 @@ class Episode:
     nu_s: float | None            # 不安全内容开始时刻;None 表示该流本身安全
     category: str | None = None
     window_s: float = 2.0         # 延迟归一化的单位
+    covered: bool = True          # 该类别是否有生效条款。False -> 正确动作是
+                                  # uncovered 而非 flag(无条款可引)
 
 
 @dataclass
@@ -57,8 +60,18 @@ class RewardConfig:
     mu_token: float = 0.05
     token_ref: float = 2000.0
     max_delay_windows: float = 20.0
+    # uncovered 的三档。未覆盖时正确指出缺口应当得分,但低于一次正确的
+    # flag —— 否则模型会发现"一律说未覆盖"比认真引用更划算。
+    gamma_uncovered_right: float = 0.6    # 确实未覆盖,正确指出
+    beta_uncovered_lazy: float = 0.4      # 明明有条款却说未覆盖(偷懒)
+    beta_uncovered_safe: float = 0.3      # 安全内容却说未覆盖(误报)
 
     def __post_init__(self):
+        if self.gamma_uncovered_right >= self.gamma_hit:
+            raise ValueError(
+                f"gamma_uncovered_right({self.gamma_uncovered_right}) >= "
+                f"gamma_hit({self.gamma_hit}):一律说未覆盖会比认真引用更划算。"
+                "见 docs/09_POLICY.md")
         # 结构性约束,不是调参偏好:beta >= gamma 时最优策略退化为永不 flag
         if self.beta_fa >= self.gamma_hit:
             raise ValueError(
@@ -75,14 +88,19 @@ class RewardBreakdown:
     delay_s: float | None = None
     n_false_alarms: int = 0
     tokens: int = 0
+    n_uncovered_right: int = 0
+    n_uncovered_wrong: int = 0
     parts: dict = field(default_factory=dict)
 
     def __str__(self) -> str:
         if self.gate_failed:
             return f"R=0.000  [门未过: {self.gate_failed}]"
         d = f"{self.delay_s:.1f}s" if self.delay_s is not None else "—"
+        u = ""
+        if self.n_uncovered_right or self.n_uncovered_wrong:
+            u = f" 未覆盖(对{self.n_uncovered_right}/错{self.n_uncovered_wrong})"
         return (f"R={self.total:+.3f}  命中={self.hit} 延迟={d} "
-                f"误报={self.n_false_alarms} tokens={self.tokens}")
+                f"误报={self.n_false_alarms}{u} tokens={self.tokens}")
 
 
 def compute_reward(ep: Episode, cfg: RewardConfig | None = None
@@ -95,6 +113,7 @@ def compute_reward(ep: Episode, cfg: RewardConfig | None = None
     tokens = sum(s.tokens for s in ep.steps)
 
     flags: list[tuple[Step, dict]] = []
+    uncovered: list[Step] = []
     for s in ep.steps:
         d = s.parse()
         if d is None:
@@ -105,6 +124,9 @@ def compute_reward(ep: Episode, cfg: RewardConfig | None = None
                 return RewardBreakdown(total=0.0, gate_failed="引用门",
                                        tokens=tokens)
             flags.append((s, d))
+        elif d["action"] == Action.UNCOVERED:
+            # uncovered 不过引用门 —— 正因为无条款可引才走这条
+            uncovered.append(s)
 
     hit, delay_s, n_fa = False, None, 0
     for s, d in flags:
@@ -116,11 +138,28 @@ def compute_reward(ep: Episode, cfg: RewardConfig | None = None
         else:
             n_fa += 1
 
+    # uncovered 三档:确实未覆盖 / 有条款却偷懒 / 安全内容误报
+    r_unc = 0.0
+    n_unc_right = n_unc_wrong = 0
+    for _s in uncovered:
+        if ep.nu_s is None:
+            r_unc -= cfg.beta_uncovered_safe          # 安全流说未覆盖
+            n_unc_wrong += 1
+        elif ep.covered:
+            r_unc -= cfg.beta_uncovered_lazy          # 有条款却说未覆盖
+            n_unc_wrong += 1
+        else:
+            if n_unc_right == 0:
+                r_unc += cfg.gamma_uncovered_right    # 正确指出缺口
+            n_unc_right += 1
+    # 未覆盖的流上,正确指出缺口即视为"接住了",不再按漏报罚
+    caught_uncovered = (not ep.covered) and n_unc_right > 0
+
     r_hit = cfg.gamma_hit if hit else 0.0
     if hit:
         norm = min(delay_s / max(ep.window_s, 1e-6), cfg.max_delay_windows)
         r_delay = -cfg.alpha_delay * norm / cfg.max_delay_windows
-    elif ep.nu_s is not None:
+    elif ep.nu_s is not None and not caught_uncovered:
         # 漏报:按最大延迟计,必须比任何误报组合都差
         r_delay = -cfg.alpha_delay
     else:
@@ -129,9 +168,11 @@ def compute_reward(ep: Episode, cfg: RewardConfig | None = None
     r_tok = -cfg.mu_token * (tokens / cfg.token_ref)
 
     return RewardBreakdown(
-        total=r_hit + r_delay + r_fa + r_tok,
+        total=r_hit + r_delay + r_fa + r_tok + r_unc,
         hit=hit, delay_s=delay_s, n_false_alarms=n_fa, tokens=tokens,
-        parts={"hit": r_hit, "delay": r_delay, "fa": r_fa, "token": r_tok})
+        n_uncovered_right=n_unc_right, n_uncovered_wrong=n_unc_wrong,
+        parts={"hit": r_hit, "delay": r_delay, "fa": r_fa, "token": r_tok,
+               "uncovered": r_unc})
 
 
 def flag_breakeven_precision(cfg: RewardConfig | None = None) -> float:

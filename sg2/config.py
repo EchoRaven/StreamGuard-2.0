@@ -150,6 +150,34 @@ class LoraConfig:
 
 
 @dataclass
+class PolicyConfig:
+    """政策语料。
+
+    `shuffle_scope` 控制位置偏置的缓解粒度。SafeWatch(ICLR 2025)实测基线
+    MLLM 的注意力与政策位置强相关(|ρ|=0.90),它用 PEPE 改 RoPE 解决;
+    我们包冻结模型改不了 RoPE,只能在输入侧换顺序。
+
+    代价明确:换顺序 = 换 prompt 文本 = KV 前缀缓存失效。因此:
+      never   —— 保序,缓存最优,但承受位置偏置
+      event   —— 每个事件换一次,事件内缓存仍有效(**推荐**)
+      tick    —— 每次都换,偏置最小但缓存全失效
+    """
+    corpus_path: str | None = None        # None -> safewatch 基线
+    shuffle_scope: str = "event"          # never | event | tick
+    allow_uncovered: bool = True          # 是否启用第四动作
+    gap_min_cases: int = 5                # 少于此数不提议补条款
+
+    def __post_init__(self):
+        if self.shuffle_scope not in ("never", "event", "tick"):
+            raise ValueError(f"shuffle_scope 非法: {self.shuffle_scope}")
+
+    def build_corpus(self):
+        from .policy import PolicyCorpus, safewatch_corpus
+        return (PolicyCorpus.load(self.corpus_path) if self.corpus_path
+                else safewatch_corpus())
+
+
+@dataclass
 class PromptConfig:
     """Prompt 模板。四段 KV 的文本内容与拼接全部可配。
 
@@ -184,6 +212,7 @@ class MidtierConfig:
     lora: LoraConfig = field(default_factory=LoraConfig)
     context: StreamContextConfig = field(default_factory=StreamContextConfig)
     prompt: PromptConfig = field(default_factory=PromptConfig)
+    policy: PolicyConfig = field(default_factory=PolicyConfig)
 
 
 @dataclass

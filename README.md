@@ -54,6 +54,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 | [06_EXPERIMENTS](docs/06_EXPERIMENTS.md) | 实验协议，每个带否定条件 |
 | [07_STREAMING_LLM](docs/07_STREAMING_LLM.md) | **中间层流式设计**：KV 分段、三元动作 |
 | [08_SFT_RL](docs/08_SFT_RL.md) | **SFT 与 RL**：数据构造、GRPO、反奖励钻空子 |
+| [09_POLICY](docs/09_POLICY.md) | **政策语料与 out-of-policy**：SafeWatch 六类、补缺流程、位置偏置 |
 | [SPEC](SPEC.md) | 数据集格式规范 v1.0（已冻结） |
 
 ### 状态
@@ -72,6 +73,8 @@ calibration machinery. The research argument lives in a separate proposal docume
 | 配置系统（嵌套 dataclass + YAML + 硬件校验） | ✅ |
 | 组件注册表（按名字换实现） | ✅ |
 | **Prompt 模板系统**（四段可配 + 指纹化缓存键） | ✅ |
+| **政策语料**（SafeWatch 六类 + 版本化 + 生命周期） | ✅ |
+| **out-of-policy**（第四动作 + 补缺 + 人工闸门） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |

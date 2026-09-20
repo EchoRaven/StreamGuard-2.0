@@ -177,3 +177,28 @@ def test_perception_flag_survives_config_roundtrip():
     c.midtier.prompt = PromptConfig(preset="perception_first",
                                     perception_only=True)
     assert SG2Config.from_dict(c.to_dict()).midtier.prompt.perception_only
+
+
+def test_citation_normalization_strips_render_artifacts():
+    """回归:实测 Qwen3-VL 输出 '[C1_sexual]',方括号是渲染格式不是 id。"""
+    from sg2.stream.protocol import normalize_citation
+    assert normalize_citation("[C1_sexual]") == "C1_sexual"
+    assert normalize_citation(" C1_sexual ") == "C1_sexual"
+    for nullish in ("none", "None", "", "无", "n/a"):
+        assert normalize_citation(nullish) is None
+
+
+def test_protocol_importable_standalone():
+    """回归:protocol 曾经过 models.base 导入 StreamStep,
+    单独导入时触发 protocol->models->streaming->protocol 的循环。
+    数据契约已抽到 sg2/contracts.py。
+    """
+    import subprocess
+    import sys as _s
+    r = subprocess.run(
+        [_s.executable, "-c",
+         "import sys; sys.path.insert(0,'.'); "
+         "from sg2.stream.protocol import parse_step; print('ok')"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).resolve().parents[1]))
+    assert r.returncode == 0, r.stderr[-400:]

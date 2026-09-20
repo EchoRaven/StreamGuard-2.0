@@ -8,13 +8,30 @@ from __future__ import annotations
 import json
 import re
 
-from ..models.base import StreamStep
+from ..contracts import StreamStep
 
-VALID_ACTIONS = ("hold", "flag", "clear")
+# uncovered = 看起来有害但现行政策未覆盖。见 sg2/outofpolicy.py ——
+# 没有它,"有害但无条款可引"的内容没有合法输出,模型只能编造引用或放行。
+VALID_ACTIONS = ("hold", "flag", "clear", "uncovered")
 
 # 模型常把 JSON 包在 ```json ... ``` 里
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
 _BARE = re.compile(r"\{.*\}", re.S)
+
+# 模型常把条款 id 连同渲染时的方括号一起抄回来 —— 实测 Qwen3-VL 输出
+# "[C1_sexual]" 而非 "C1_sexual",导致 valid_citation() 全部判非法。
+# 归一化而非放宽校验:方括号是渲染格式,不是 id 的一部分。
+_CITE_JUNK = "[]()<>「」 \t\n\"'`"
+_NULLISH = {"", "none", "null", "n/a", "na", "无", "不适用"}
+
+
+def normalize_citation(raw) -> str | None:
+    if raw is None:
+        return None
+    c = str(raw).strip(_CITE_JUNK).strip()
+    return None if c.lower() in _NULLISH else c
+
+
 
 
 class ParseError(ValueError):
@@ -63,7 +80,7 @@ def parse_step(text: str, *, tokens: int = 0) -> StreamStep:
     step = StreamStep(
         action=action, raw=text,
         category=d.get("category"),
-        policy_citation=d.get("policy_citation"),
+        policy_citation=normalize_citation(d.get("policy_citation")),
         evidence_frames=tuple(int(f) for f in frames
                               if isinstance(f, (int, float))),
         confidence=d.get("confidence"),

@@ -1,0 +1,63 @@
+clauses:
+- id: C1_sexual
+  category: C1_sexual
+  title: Sexual Content
+  text: 禁止裸露、性行为、性暗示及性剥削相关内容。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+- id: C2_abuse
+  category: C2_abuse
+  title: Harassment & Bullying
+  text: 禁止针对个人或群体的骚扰、霸凌、羞辱与人身攻击。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+- id: C3_violence
+  category: C3_violence
+  title: Threats, Violence & Harm
+  text: 禁止暴力行为、伤害、威胁、血腥及自残相关内容。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+- id: C4_misinformation
+  category: C4_misinformation
+  title: False & Deceptive Information
+  text: 禁止虚假与欺骗性信息,包括伪造与误导性剪辑。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+- id: C5_illegal
+  category: C5_illegal
+  title: Illegal/Regulated Activities
+  text: 禁止违法及受管制活动,包括毒品、武器交易、盗窃。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+- id: C6_extremism
+  category: C6_extremism
+  title: Hateful Content & Extremism
+  text: 禁止仇恨言论、极端主义宣传与恐怖主义相关内容。
+  status: active
+  version: 1
+  added_on: '2026-09-19'
+  supersedes: null
+  provenance: imported
+  examples: []
+name: safewatch
+version: 1.0.0

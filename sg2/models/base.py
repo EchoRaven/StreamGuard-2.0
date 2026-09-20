@@ -6,10 +6,11 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 import numpy as np
+
+from ..contracts import SentinelOutput, StreamStep  # noqa: F401  重导出
 
 
 # ---------------------------------------------------------------- 编码器
@@ -29,19 +30,6 @@ class VisionEncoder(Protocol):
 # ---------------------------------------------------------------- Sentinel
 
 
-@dataclass
-class SentinelOutput:
-    """always-on 层的输出。
-
-    ⚠️ `score` 必须是**连续**量。小 VLM 吐 safe/unsafe 是 1-bit 信号,
-    量化太狠,做 CUSUM 输入很糟(docs/01_MODELS.md §1.1)。
-    """
-    t_s: float
-    score: float
-    channels: dict[str, float] = field(default_factory=dict)
-    decoded: bool = True                  # 本帧是否真的解码了(去重会跳过)
-
-
 @runtime_checkable
 class Sentinel(Protocol):
     """多通道廉价打分器。覆盖 100% 流量。"""
@@ -56,24 +44,6 @@ class Sentinel(Protocol):
 
 
 # ---------------------------------------------------------------- 中间层
-
-
-@dataclass
-class StreamStep:
-    """流式 VLM 在一个 tick 的输出。"""
-    action: str                           # hold | flag | clear
-    raw: str
-    category: str | None = None
-    policy_citation: str | None = None
-    evidence_frames: tuple[int, ...] = ()
-    confidence: float | None = None
-    tokens: int = 0
-
-    @property
-    def is_valid(self) -> bool:
-        if self.action not in ("hold", "flag", "clear"):
-            return False
-        return not (self.action == "flag" and not self.policy_citation)
 
 
 @runtime_checkable

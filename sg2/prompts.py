@@ -35,15 +35,20 @@ ${evidence}"""
 DEFAULT_FRAME_MARKER = "[帧 ${index} @ ${t_s}s]"
 
 DEFAULT_TASK_JUDGE = """以下是最近 ${n_frames} 帧。根据政策判断。证据不足时回 hold,不要猜。
-  hold  = 证据不足,继续观察
-  flag  = 判定违规(必须给出 policy_citation)
-  clear = 判定安全,闭合事件"""
+  hold      = 证据不足,继续观察
+  flag      = 判定违规(必须给出 policy_citation,且必须是上面列出的条款 id)
+  clear     = 判定安全,闭合事件
+  uncovered = 看起来有害,但上面**没有任何条款**覆盖它
+
+不要为了能 flag 而硬套一个不贴切的条款 —— 那种情况请用 uncovered。"""
 
 DEFAULT_TASK_PERCEPTION = """以下是最近 ${n_frames} 帧。描述其中**可见的内容**:
 主体、动作、场景、可读文字。只陈述看到的,不做任何判断。"""
 
 DEFAULT_FORMAT_JUDGE = """只输出一个 JSON 对象:
-{"action":"flag","category":"<类别>","evidence_frames":[<帧号>],"policy_citation":"<条款id>","confidence":0.0}"""
+{"action":"flag","category":"<类别>","evidence_frames":[<帧号>],"policy_citation":"<条款id>","confidence":0.0}
+uncovered 时用:
+{"action":"uncovered","description":"<看到的有害内容>","suggested_category":"<你认为该归入的新类别>"}"""
 
 DEFAULT_FORMAT_PERCEPTION = """只输出一个 JSON 对象:
 {"action":"hold","description":"<你看到的内容>"}"""
