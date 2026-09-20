@@ -37,6 +37,7 @@ class MultiChannelSentinel:
         self.reset()
 
     def reset(self) -> None:
+        self._ref = getattr(self, "_ref", None)
         self._last_emb: np.ndarray | None = None
         self._decoded = 0
         self._skipped = 0
@@ -105,6 +106,21 @@ class MultiChannelSentinel:
             return 0.0
         return float(emb @ self._proto)
 
+    def _ood(self, emb: np.ndarray) -> float:
+        """离参考集有多远。1 = 完全没见过。
+
+        用与参考嵌入的**最大**相似度:只要像其中任何一个就不算 OOD。
+        没有参考集时返回 0(不声称知道),而不是 1(不乱报警)。
+        """
+        if self._ref is None or len(self._ref) == 0:
+            return 0.0
+        return float(np.clip(1.0 - (self._ref @ emb).max(), 0.0, 1.0))
+
+    def set_reference(self, embs: np.ndarray) -> None:
+        """装载 OOD 参考集。应来自 pool="compile",**不能用校准池**。"""
+        e = np.atleast_2d(embs)
+        self._ref = e / np.maximum(np.linalg.norm(e, axis=1, keepdims=True), 1e-12)
+
     @staticmethod
     def _codec_score(codec: np.ndarray | None) -> float:
         """压缩域:相对码率 + 突变。不解码即可得,成本接近 0。"""
@@ -156,7 +172,9 @@ class MultiChannelSentinel:
         else:
             score = float(sum(ch.values()))
 
-        return SentinelOutput(t_s=t_s, score=score, channels=ch, decoded=decoded)
+        ood = self._ood(self._last_emb) if self._last_emb is not None else 0.0
+        return SentinelOutput(t_s=t_s, score=score, channels=ch,
+                              decoded=decoded, ood=ood)
 
     @property
     def stats(self) -> dict:

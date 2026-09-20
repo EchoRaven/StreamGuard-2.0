@@ -22,6 +22,9 @@ class SentinelOutput:
     score: float
     channels: dict[str, float] = field(default_factory=dict)
     decoded: bool = True
+    # ⚠️ OOD 与 score 是**不同**的东西。score 低可能是"确实安全",
+    # 也可能是"我没见过所以看不懂" —— 后者必须上送,而 score 分不出来。
+    ood: float = 0.0
 
 
 @dataclass

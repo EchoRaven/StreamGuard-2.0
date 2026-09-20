@@ -23,6 +23,8 @@ from .models import build_midtier, build_sentinel
 from .models.base import StreamStep
 from .outofpolicy import PolicyGapTracker, UncoveredCase
 from .policy import PolicyCorpus
+from .realtime import RealtimeBudget
+from .router import CompetenceRouter, Route
 
 
 @dataclass
@@ -33,6 +35,9 @@ class Tick:
     cusum_stat: float
     alarmed: bool
     escalated: bool
+    route: str = ""
+    ood: float = 0.0
+    voi: float = 0.0
     forced_by_coverage: bool = False
     audited: bool = False
     step: StreamStep | None = None
@@ -49,6 +54,8 @@ class StreamResult:
     events_closed: int = 0
     uncovered_cases: int = 0
     rewinds: int = 0
+    routes: dict = field(default_factory=dict)
+    realtime: dict = field(default_factory=dict)
     buffer_stats: dict = field(default_factory=dict)
     aci_stats: dict = field(default_factory=dict)
 
@@ -87,7 +94,8 @@ class Pipeline:
                  sentinel=None, midtier=None, cusum=None,
                  corpus: PolicyCorpus | None = None,
                  buffer: RingBuffer | None = None,
-                 aci: AdaptiveConformal | None = None):
+                 aci: AdaptiveConformal | None = None,
+                 router: CompetenceRouter | None = None):
         self.cfg = cfg or SG2Config()
         self.sentinel = sentinel or build_sentinel(self.cfg.sentinel)
         self.midtier = midtier or build_midtier(self.cfg.midtier)
@@ -99,6 +107,34 @@ class Pipeline:
         self.aci = aci or AdaptiveConformal(
             alpha=1.0 - self.cfg.calibration.target_recall,
             gamma=self.cfg.calibration.aci_gamma)
+        # ⚠️ 路由按**能力**不按风险:"低级处理不了就上送"。
+        # CUSUM 回答"什么时候变了",router 回答"这一条我自己能不能定"。
+        # 二者互补 —— 纯风险路由永远抓不到"分数低是因为看不懂"那一格。
+        self.router = router or CompetenceRouter()
+        if router is None:
+            # ⚠️ tau 必须来自**校准**,不能用默认 0。实测:随机编码器的
+            # 分数全在 0 附近,tau=0 会让每一帧都"近阈值"从而全部上送,
+            # 升级率 100% —— 级联完全失效,而且不报任何错。
+            self._tau_calibrated = False
+        else:
+            self._tau_calibrated = True
+        self.gaps = PolicyGapTracker(self.corpus)
+        self._rng = random.Random(self.cfg.runtime.seed)
+
+    def calibrate_router(self, safe_scores) -> float:
+        """用一批**已知安全**的分数标定 router 的 tau。
+
+        取安全分数的高分位作为阈值:高于它才算可疑。
+        没做这一步就跑,升级率会失控。
+        """
+        import numpy as _np
+        a = _np.asarray(list(safe_scores), dtype=float)
+        if a.size < 10:
+            raise ValueError(f"至少需要 10 个安全样本来标定 tau,收到 {a.size}")
+        self.router.tau = float(_np.quantile(a, 0.95))
+        self.router.margin = max(float(a.std()), 1e-3)
+        self._tau_calibrated = True
+        return self.router.tau
         self.gaps = PolicyGapTracker(self.corpus)
         self._rng = random.Random(self.cfg.runtime.seed)
 
@@ -125,6 +161,13 @@ class Pipeline:
         Args:
             nu_s: 真值变点。仅用于生成 ACI 的审计反馈 —— **不影响判决**。
         """
+        if not self._tau_calibrated:
+            import warnings
+            warnings.warn(
+                "router.tau 未标定(仍为默认值)。分数分布不以 0 为中心时,"
+                "每一帧都会被判为'近阈值'从而全部上送,升级率趋近 100%。"
+                "请先调用 calibrate_router(safe_scores)。", RuntimeWarning,
+                stacklevel=2)
         res = StreamResult()
         event_idx = 0
         self.midtier.set_policy(self._policy_text(event_idx))
@@ -139,7 +182,9 @@ class Pipeline:
             alarmed = self.cusum.update(out.score, t_s)
 
             forced = self._rng.random() < self.cfg.coverage.rho
-            escalate = alarmed or forced
+            rd = self.router.route(out.score, ood=out.ood,
+                                   forced=forced, alarmed=alarmed)
+            escalate = rd.escalated
 
             step, n_rewound = None, 0
             if escalate:
@@ -193,12 +238,28 @@ class Pipeline:
             res.ticks.append(Tick(
                 t_s=t_s, sentinel_score=out.score,
                 cusum_stat=self.cusum.statistic, alarmed=alarmed,
-                escalated=escalate, forced_by_coverage=forced,
+                escalated=escalate, route=rd.route.value, ood=out.ood,
+                voi=rd.voi, forced_by_coverage=forced,
                 audited=audited, step=step, rewound_frames=n_rewound))
 
         res.buffer_stats = self.buffer.stats
         res.aci_stats = self.aci.stats
+        res.routes = self.router.stats
+        res.realtime = self.realtime_check(res.escalation_rate)
         return res
+
+    def realtime_check(self, escalation_rate: float) -> dict:
+        """实时可行性。**与成本是两条独立约束** ——
+        钱能买更多卡,但单条流的每一级必须在截止期内完成,否则积压,
+        而排队延迟要计入 E[τ−ν]。"""
+        b = RealtimeBudget(sentinel_fps=self.cfg.sentinel.sample_fps,
+                           escalation_rate=max(escalation_rate, 1e-6))
+        return {"feasible": b.feasible, "bottleneck": b.bottleneck().name,
+                "max_streams_per_gpu": b.max_streams_per_gpu(),
+                "added_delay_ms": round(b.total_added_delay_s() * 1000, 1),
+                "tiers": {t.name: {"headroom": round(t.headroom, 1),
+                                   "util": round(t.utilization, 4)}
+                          for t in b.tiers()}}
 
     def reset(self) -> None:
         self.sentinel.reset()
