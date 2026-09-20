@@ -78,6 +78,10 @@ calibration machinery. The research argument lives in a separate proposal docume
 | **out-of-policy**（第四动作 + 补缺 + 人工闸门） | ✅ |
 | **政策归纳**（从 k 条标签反推定义 + 迭代循环） | ✅ |
 | **judge 能力基准**（真值已知 + 常数基线 + 退化检查） | ✅ |
+| **ACI 在线校准**（含饱和诊断 + DtACI） | ✅ |
+| **Ring buffer**（时长+字节双约束 + 重采样） | ✅ |
+| **评测指标**（帕累托 / 优雅退化 / 逐分层 ROC / 成本交叉点） | ✅ |
+| **Analyst 工具集**（7 个工具 + 预算计量） | ✅ |
 | 动作协议解析（严格，不修补） | ✅ |
 | 端到端 Pipeline 编排 | ✅ |
 | **SigLIP 2 编码器** | ✅ 真实权重跑通：1152 维，18 帧/秒，2.2 GB |
@@ -92,7 +96,7 @@ calibration machinery. The research argument lives in a separate proposal docume
 
 ```bash
 make install     # pip install -e ".[dev]"
-make test        # 229 passed
+make test        # 287 passed
 make validate    # clean 0 error;dirty 必须报 2 个拼接泄漏
 make synth       # 用 lavfi 合成 demo 数据集,不需要真实素材
 make audit       # 压缩域对抗泄漏审计

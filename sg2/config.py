@@ -238,7 +238,9 @@ class AnalystConfig:
 class CalibrationConfig:
     target_recall: float = 0.95
     delta: float = 0.10
-    aci_gamma: float = 0.02               # ACI 步长
+    # ACI 步长。实测 0.02 在 3%<->8% 漂移下会让 alpha_t 摆满量程;
+    # 0.002 才稳。经验法则:约取 1/(一个漂移周期内的反馈条数)。
+    aci_gamma: float = 0.002
     min_release_events: int = 3           # 两次 case library 发布的最小间隔 = k/gamma
 
     @property
