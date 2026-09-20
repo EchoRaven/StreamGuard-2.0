@@ -23,12 +23,26 @@ _BARE = re.compile(r"\{.*\}", re.S)
 # 归一化而非放宽校验:方括号是渲染格式,不是 id 的一部分。
 _CITE_JUNK = "[]()<>「」 \t\n\"'`"
 _NULLISH = {"", "none", "null", "n/a", "na", "无", "不适用"}
+# 渲染时写的键名,模型会连键名一起抄
+_CITE_PREFIXES = ("id=", "id:", "policy_id=", "条款id=", "条款=")
 
 
 def normalize_citation(raw) -> str | None:
+    """把模型抄回来的渲染格式剥掉,还原成纯 id。
+
+    实测 Qwen3-VL 的四种抄法(全是渲染格式泄漏,不是模型不听话):
+        "[C1_sexual]"      渲染用方括号包 id
+        "1"                行首序号
+        "C1"               截断成前缀(交给 resolve_citation 处理)
+        "id=T1_testpattern" 渲染写成 "id=xxx",连键名一起抄
+    """
     if raw is None:
         return None
     c = str(raw).strip(_CITE_JUNK).strip()
+    for pfx in _CITE_PREFIXES:
+        if c.lower().startswith(pfx):
+            c = c[len(pfx):].strip(_CITE_JUNK).strip()
+            break
     return None if c.lower() in _NULLISH else c
 
 

@@ -251,3 +251,30 @@ def test_draft_clause_cannot_be_cited():
                        status=ClauseStatus.DRAFT, provenance="generated"))
     cl, why = c.resolve_citation("X1")
     assert cl is None and why == "not_enforced"
+
+
+# ==================== 渲染格式泄漏：实测四种抄法 ====================
+
+@pytest.mark.parametrize("raw,expect", [
+    ("[C1_sexual]", "C1_sexual"),          # 渲染用方括号包 id
+    ("id=C1_sexual", "C1_sexual"),         # 渲染写 "id=xxx",连键名抄走
+    ("id: C1_sexual", "C1_sexual"),
+    ("条款=C1_sexual", "C1_sexual"),
+    (" C1_sexual ", "C1_sexual"),
+    ("C1_sexual", "C1_sexual"),
+])
+def test_render_prefix_leaks_are_normalized(raw, expect):
+    """四种抄法全是**渲染格式泄漏**,不是模型不听话。
+
+    实测 Qwen3-VL-8B 在匹配条款下判对了内容、引对了条款,却输出
+    "id=T1_testpattern" —— 因为渲染里就写着 "id=xxx"。
+    """
+    from sg2.stream.protocol import normalize_citation
+    assert normalize_citation(raw) == expect
+
+
+def test_id_prefix_leak_resolves_to_real_clause():
+    from sg2.stream.protocol import normalize_citation
+    c = safewatch_corpus()
+    cl, why = c.resolve_citation(normalize_citation("id=C3_violence"))
+    assert cl is not None and cl.id == "C3_violence" and why == "exact"
