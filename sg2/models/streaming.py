@@ -17,7 +17,8 @@ import numpy as np
 from ..config import MidtierConfig
 from ..registry import build, register
 from ..stream.context import StreamContext
-from ..stream.protocol import build_prompt, parse_step
+from ..prompts import PromptBuilder
+from ..stream.protocol import parse_step
 from .base import StreamStep
 
 
@@ -51,10 +52,20 @@ class MockStreamingVLM:
         self.tokens_per_step = tokens_per_step
         self._i = 0
         self._policy_text = ""
+        self.prompts = PromptBuilder(self.cfg.prompt.build_templates())
 
-    def set_policy(self, policy_text: str, key: str) -> bool:
+    def set_policy(self, policy_text: str, key: str | None = None) -> bool:
+        """key=None 时由模板指纹 + 政策内容自动派生。
+
+        ⚠️ 手动传 key 且只反映政策内容的话,改模板会命中旧缓存 ——
+        模型照跑,只是在用旧前缀。自动派生把这条堵死。
+        """
         self._policy_text = policy_text
-        return self.ctx.set_policy(max(1, len(policy_text) // 4), key)
+        key = key or self.prompts.cache_key(policy_text,
+                                            self.cfg.prompt.checklist)
+        header = self.prompts.policy_header(policy_text,
+                                            self.cfg.prompt.checklist)
+        return self.ctx.set_policy(max(1, len(header) // 4), key)
 
     def ingest(self, frames: np.ndarray, t_s: float) -> None:
         frames = np.atleast_3d(frames)
@@ -96,6 +107,8 @@ class Qwen3VLStreaming:
         self._proc = None
         self._policy_text = ""
         self._frames: list[tuple[float, np.ndarray]] = []
+        self.prompts = PromptBuilder(self.cfg.prompt.build_templates())
+        self._evidence: list[str] = []
 
     # ---------- 惰性加载 ----------
 
@@ -123,10 +136,14 @@ class Qwen3VLStreaming:
 
     # ---------- 协议 ----------
 
-    def set_policy(self, policy_text: str, key: str) -> bool:
+    def set_policy(self, policy_text: str, key: str | None = None) -> bool:
         self._policy_text = policy_text
         self._lazy()
-        n_tok = len(self._proc.tokenizer(policy_text)["input_ids"])
+        key = key or self.prompts.cache_key(policy_text,
+                                            self.cfg.prompt.checklist)
+        header = self.prompts.policy_header(policy_text,
+                                            self.cfg.prompt.checklist)
+        n_tok = len(self._proc.tokenizer(header)["input_ids"])
         return self.ctx.set_policy(n_tok, key)
 
     def ingest(self, frames: np.ndarray, t_s: float) -> None:
@@ -154,8 +171,13 @@ class Qwen3VLStreaming:
 
         imgs = [Image.fromarray((f * 255).astype(np.uint8))
                 for _, f in self._frames]
-        prompt = build_prompt(self._policy_text, n_frames=len(imgs),
-                              perception_only=False)
+        prompt = self.prompts.build(
+            policy_text=self._policy_text, n_frames=len(imgs),
+            checklist=self.cfg.prompt.checklist,
+            timestamps=[t for t, _ in self._frames],
+            evidence=self._evidence,
+            perception_only=self.cfg.prompt.perception_only,
+            include_sink=True)
         msgs = [{"role": "user",
                  "content": [{"type": "image"} for _ in imgs]
                             + [{"type": "text", "text": prompt}]}]
@@ -172,14 +194,17 @@ class Qwen3VLStreaming:
         s = parse_step(raw, tokens=int(gen.shape[0]))
         if s.action == "flag":
             self.ctx.append_event(s.tokens, tag="flag")
+            self._evidence.append(f"t={self._frames[-1][0]:.1f}s {s.category}")
         return s
 
     def close_event(self) -> int:
+        self._evidence.clear()
         return self.ctx.close_event()
 
     def reset(self) -> None:
         self.ctx = _ctx_from(self.cfg)
         self._frames.clear()
+        self._evidence.clear()
 
 
 def build_midtier(cfg: MidtierConfig, **kw):

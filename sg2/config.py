@@ -150,6 +150,29 @@ class LoraConfig:
 
 
 @dataclass
+class PromptConfig:
+    """Prompt 模板。四段 KV 的文本内容与拼接全部可配。
+
+    `preset` 选内置预设,`path` 指向外部 YAML(优先级更高),
+    `overrides` 做逐字段覆盖。三者叠加,便于消融实验只改一段。
+    """
+    preset: str = "default"
+    path: str | None = None
+    overrides: dict = field(default_factory=dict)
+    checklist: str = ""
+    perception_only: bool = False     # 感知-判断解耦,见 docs/05 §5.4
+
+    def build_templates(self):
+        from .prompts import PromptTemplates, load_preset
+        t = (PromptTemplates.load(self.path) if self.path
+             else load_preset(self.preset))
+        if self.overrides:
+            d = t.to_dict(); d.update(self.overrides)
+            t = PromptTemplates.from_dict(d)
+        return t
+
+
+@dataclass
 class MidtierConfig:
     """中间层流式 VLM。"""
     name: str = "qwen3vl"
@@ -160,6 +183,7 @@ class MidtierConfig:
     device: str = "cuda:0"
     lora: LoraConfig = field(default_factory=LoraConfig)
     context: StreamContextConfig = field(default_factory=StreamContextConfig)
+    prompt: PromptConfig = field(default_factory=PromptConfig)
 
 
 @dataclass

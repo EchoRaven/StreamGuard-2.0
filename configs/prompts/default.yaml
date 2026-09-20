@@ -1,0 +1,36 @@
+sink: 你是流式视频内容审核系统。
+policy_header: '${policy_text}
+
+
+  判定清单:
+
+  ${checklist}'
+event_recap: '已积累的证据(本事件):
+
+  ${evidence}'
+frame_marker: '[帧 ${index} @ ${t_s}s]'
+task_judge: "以下是最近 ${n_frames} 帧。根据政策判断。证据不足时回 hold,不要猜。\n  hold  = 证据不足,继续观察\n  flag  = 判定违规(必须给出 policy_citation)\n\
+  \  clear = 判定安全,闭合事件"
+task_perception: '以下是最近 ${n_frames} 帧。描述其中**可见的内容**:
+
+  主体、动作、场景、可读文字。只陈述看到的,不做任何判断。'
+format_judge: '只输出一个 JSON 对象:
+
+  {"action":"flag","category":"<类别>","evidence_frames":[<帧号>],"policy_citation":"<条款id>","confidence":0.0}'
+format_perception: '只输出一个 JSON 对象:
+
+  {"action":"hold","description":"<你看到的内容>"}'
+exemplar: '示例 ${index}:
+
+  输入: ${input}
+
+  输出: ${output}'
+joiner: '
+
+
+  '
+exemplar_joiner: '
+
+
+  '
+name: default

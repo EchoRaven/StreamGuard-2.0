@@ -95,6 +95,56 @@ LoRA 微调，先 SFT 后 RL。
 `flag` 必须带 `policy_citation`，否则视为格式错误（SFT 阶段），
 或奖励归零（RL 阶段，见 `08_SFT_RL.md` §3.2）。
 
+## 3.3 四段的文本内容全部可配置
+
+四段 KV 各自的模板、段间拼接、任务说明、输出格式说明，全部走
+`sg2/prompts.py` 的 `PromptTemplates`，可由 YAML 加载
+（`configs/prompts/*.yaml`）。
+
+这不是美观问题，有两个硬理由：
+
+1. **离线 prompt 编译**（docs/08 §4.3）要求 prompt 是**数据**而非代码。
+   `pool="compile"` 存在的意义就是在它上面搜模板。
+2. **模板变动必须使 KV 前缀缓存失效。** `cache_key()` 把模板指纹与政策
+   内容一起哈希 —— 只用政策内容做 key 的话，改了模板会命中旧前缀，
+   模型照跑只是在用旧政策，**不会报任何错**。
+
+占位符用 `$name`（string.Template）而非 `str.format`：输出格式说明里
+全是花括号，用 .format 会把它们当成占位符炸掉。
+
+### 可配的内容
+
+| 模板字段 | 对应 | 必需占位符 |
+| --- | --- | --- |
+| `sink` | S0 | — |
+| `policy_header` | S1 | `policy_text` |
+| `event_recap` | S2 | `evidence` |
+| `frame_marker` | S3 逐帧 | `index` |
+| `task_judge` / `task_perception` | 任务说明 | `n_frames` |
+| `format_judge` / `format_perception` | 输出格式 | — |
+| `exemplar` | 少样本条目 | `input`, `output` |
+| `joiner` | 段间分隔 | — |
+
+缺必需占位符在构造时即报错，不等到运行。
+
+### 实测：模板确实改变模型行为
+
+同一帧、同一政策，Qwen3-VL-2B 上三个预设：
+
+| 预设 | 政策头 token | 输出 |
+| --- | --- | --- |
+| `default` | 37 | `hold`，合法 JSON |
+| `minimal` | 22 | **`invalid`** —— 吐大段自然语言，不遵守格式 |
+| `perception_first` | 25 | 合法 JSON |
+
+`minimal` 的格式遵守率崩掉，正说明模板值得被**搜索**而不是拍脑袋定。
+格式合法率是可测量，应作为 prompt 编译的目标之一（docs/08 §4）。
+
+> ⚠️ 用 `perception_first` 时必须同时设 `perception_only=True`。
+> 否则模板问的是感知、格式说明却要求判决 —— 实测模型会照样输出 `flag`。
+> 这是实测发现的 bug：`step()` 曾硬编码 `perception_only=False`，
+> 不读配置。
+
 ## 4. 实现分层
 
 ```

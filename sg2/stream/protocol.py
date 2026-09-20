@@ -75,24 +75,15 @@ def parse_step(text: str, *, tokens: int = 0) -> StreamStep:
 
 
 def build_prompt(policy_text: str, *, n_frames: int,
-                 perception_only: bool = False) -> str:
+                 perception_only: bool = False, builder=None,
+                 **kw) -> str:
     """构造一次 tick 的用户提示。
 
-    perception_only 时只问中性感知问题,判断交给下一步对照政策 ——
-    这是绕开内置过滤的结构化做法(docs/05_RUNTIME.md §5.4)。
+    实际装配交给 `sg2.prompts.PromptBuilder` —— 模板是**数据**,
+    离线 prompt 编译(docs/08 §4.3)才可能做。
     """
-    if perception_only:
-        task = ("描述这些画面里**可见的内容**:主体、动作、场景、可读文字。"
-                "只陈述看到的,不做任何判断。")
-        fmt = '{"action":"hold","description":"..."}'
-    else:
-        task = ("根据政策判断这些画面。证据不足时回 hold,不要猜。\n"
-                "  hold  = 证据不足,继续观察\n"
-                "  flag  = 判定违规(必须给出 policy_citation)\n"
-                "  clear = 判定安全,闭合事件")
-        fmt = ('{"action":"flag","category":"<类别>",'
-               '"evidence_frames":[<帧号>],"policy_citation":"<条款id>",'
-               '"confidence":0.0}')
-    return (f"{policy_text}\n\n"
-            f"以下是最近 {n_frames} 帧。{task}\n\n"
-            f"只输出一个 JSON 对象,格式:\n{fmt}")
+    if builder is None:
+        from ..prompts import PromptBuilder
+        builder = PromptBuilder()
+    return builder.build(policy_text=policy_text, n_frames=n_frames,
+                         perception_only=perception_only, **kw)
